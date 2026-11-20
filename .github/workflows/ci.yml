@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Python reference engine
+        run: python -W error -m unittest discover -s tests -t .
+        working-directory: lab
+      - name: Fixtures are in step with the Python engine
+        run: |
+          python lab/scripts/golden.py
+          npm test -- tests/golden.test.ts
+      - name: Dependency audit (reported, not blocking)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qm
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: qmtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qm" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://qm@127.0.0.1:5432/qmtest
+      CRON_SECRET: ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - name: Throwaway password for this run
+        run: echo "APP_PASSWORD=ci-$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+      - run: npm run build
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - name: Browser walk-through
+        run: |
+          npx next start -p 3210 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3210/login >/dev/null && break; sleep 1; done
+          BASE_URL=http://localhost:3210 python tests/e2e/run.py

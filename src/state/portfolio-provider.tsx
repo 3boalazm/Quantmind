@@ -77,6 +77,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
   const pendingResolve = useRef<((accept: boolean) => void) | null>(null);
   const requestId = useRef(0);
+  // A write that finishes after the book was switched must reload the book on screen now,
+  // not the one that was selected when the write started.
+  const current = useRef<{ book: Book; add: number | null }>({ book: "paper", add: null });
 
   useEffect(() => {
     try {
@@ -144,7 +147,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     if (hydrated) void load(book, add);
   }, [add, book, hydrated, load]);
 
-  const refresh = useCallback(() => load(book, add), [add, book, load]);
+  current.current = { book, add };
+  const refresh = useCallback(() => load(current.current.book, current.current.add), [load]);
 
   const setBook = useCallback((next: Book) => {
     setBookState(next);
@@ -190,14 +194,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           return false;
         }
         if (typeof payload?.message === "string") notify(payload.message);
-        await load(book, add);
+        await load(current.current.book, current.current.add);
         return true;
       } catch {
         notify("مفيش اتصال بالخادم. العملية ما اتسجلتش.");
         return false;
       }
     },
-    [add, book, load, notify],
+    [load, notify],
   );
 
   const pullReference = useCallback(async () => {
@@ -217,13 +221,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setFetchReport(report);
       const failed = Object.keys(report.failed).length;
       notify(failed ? `اتحدّث ${report.ok.length} وفشل ${failed} مصدر. التفاصيل في صفحة الأسعار.` : "الأسعار المرجعية اتحدّثت.");
-      await load(book, add);
+      await load(current.current.book, current.current.add);
     } catch {
       notify("مفيش اتصال بالخادم.");
     } finally {
       setPulling(false);
     }
-  }, [add, book, load, notify]);
+  }, [load, notify]);
 
   const signOut = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => undefined);

@@ -222,7 +222,7 @@ export function PlanScreen() {
               </span>
             </div>
             <div className="stmt__row">
-              <span>نفس العائد كمعدل سنوي</span>
+              <span>نفس العائد كمعدل سنوي (مبدئي، مش توقع)</span>
               <span className="amt">{s.annualised === null ? <span className="amt--zero">بعد 90 يوم</span> : <N>{signedPct(s.annualised)}</N>}</span>
             </div>
             <div className="stmt__row">

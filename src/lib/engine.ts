@@ -51,6 +51,8 @@ export interface Instrument {
   bucket: string;
   unit?: string;
   fixed_price?: boolean;
+  /** Overrides rules.stale_days for an instrument whose price moves faster than the monthly cycle. */
+  stale_days?: number;
   trend_rule?: TrendRule;
   /** Usual fees, in percent. They pre-fill the entry form; the ledger stores what was actually paid. */
   fees?: { buy_pct?: number; sell_pct?: number };
@@ -282,7 +284,7 @@ export function valuation(config: Config, ledger: LedgerRow[], prices: PriceStor
       units: u,
       price: p,
       price_date: d,
-      stale: !meta.fixed_price && (d === null || dayDiff(asof, d) > staleDays),
+      stale: !meta.fixed_price && (d === null || dayDiff(asof, d) > (meta.stale_days ?? staleDays)),
       value,
     });
   }

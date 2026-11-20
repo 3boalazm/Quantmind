@@ -24,6 +24,7 @@ def shot(page, name, full=True):
 
 def main():
     problems = []
+    expect.set_options(timeout=15_000)  # the first requests after a cold start are slow
     with sync_playwright() as p:
         browser = p.chromium.launch()
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, locale="ar-EG")

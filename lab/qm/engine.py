@@ -101,7 +101,7 @@ def valuation(config: dict, ledger: list[dict], prices: PriceStore, asof: date) 
                 "units": u,
                 "price": p,
                 "price_date": d.isoformat() if d else None,
-                "stale": not meta.get("fixed_price") and (d is None or (asof - d).days > stale_days),
+                "stale": not meta.get("fixed_price") and (d is None or (asof - d).days > meta.get("stale_days", stale_days)),
                 "value": value,
             }
         )

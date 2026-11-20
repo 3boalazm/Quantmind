@@ -269,6 +269,15 @@ export function accrue(state: OpState, day: ISODate, instrument: unknown, rate: 
   };
 }
 
+/**
+ * One price per instrument per day. A reading the user entered on purpose (a balance from the app, a
+ * manual price) is the better valuation, so a trade never replaces it; a trade does replace an
+ * earlier trade of the same day. What was paid is in the ledger either way, so profit is unaffected.
+ */
+export function tradePriceApplies(sameDaySource: string | undefined | null): boolean {
+  return !sameDaySource || sameDaySource === "trade";
+}
+
 const REMOVE_MESSAGES = {
   wallet: "مينفعش تتحذف: فيه عمليات بعدها بتصرف الفلوس دي. احذفها الأول.",
   units: "مينفعش تتحذف: فيه بيع بعدها معتمد على الشراء ده. احذفه الأول.",

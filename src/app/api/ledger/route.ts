@@ -38,8 +38,11 @@ export async function POST(request: Request) {
         ops.checkAddition(state.ledger, result.ledger);
         await insertLedger(q, book, result.ledger);
       }
-      // a trade also records its price, unless a later reading for that day already exists
-      if (result.price && state.prices.get(result.price.instrument, day)[1] !== day) await upsertPrice(q, book, result.price);
+      if (result.price) {
+        const instrument = result.price.instrument;
+        const sameDay = state.priceRows.find((r) => r.book === book && r.instrument === instrument && r.date === day);
+        if (ops.tradePriceApplies(sameDay?.source)) await upsertPrice(q, book, result.price);
+      }
       return result.message;
     });
     return ok({ ok: true, message });
