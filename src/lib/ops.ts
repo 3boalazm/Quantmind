@@ -64,23 +64,77 @@ function note(value: unknown): string {
 const blank = { instrument: "", units: 0, price: 0, amount: 0, fee: 0, note: "" };
 
 /**
- * Typing mistakes in a price or a balance flow straight into every figure on the dashboard, so a
- * price far from the last reading is held until it is confirmed. Reference series are exempt:
- * they come from a feed, not from a keyboard.
+ * Typing mistakes in a price or a balance flow straight into every figure on the dashboard, and a
+ * product's terms are easy to forget. Each check returns a sentence to confirm, or nothing. The
+ * ledger records what really happened, so these ask for a second look instead of forbidding.
  */
-function guardJump(state: OpState, day: ISODate, inst: string, price: number, confirmed: unknown): void {
-  if (confirmed === true || inst.startsWith("REF_")) return;
+function priceWarning(state: OpState, day: ISODate, inst: string, price: number): string | null {
+  if (inst.startsWith("REF_")) return null; // reference series come from a feed, not from a keyboard
   const limit = state.config.rules.max_price_jump;
-  if (!limit || limit <= 0) return;
+  if (!limit || limit <= 0) return null;
+  const meta = state.config.instruments[inst];
+  const name = meta?.name ?? inst;
+  const pct = (change: number) => `${change > 0 ? "+" : "-"}${(Math.abs(change) * 100).toFixed(0)}%`;
   const [last, when] = state.prices.get(inst, day);
-  if (last === null || last <= 0) return;
-  const change = price / last - 1;
-  if (Math.abs(change) <= limit) return;
-  const name = state.config.instruments[inst]?.name ?? inst;
-  const sign = change > 0 ? "+" : "-";
-  throw new ConfirmError(
-    `سعر ${name} هيتغير ${sign}${(Math.abs(change) * 100).toFixed(0)}% عن آخر قراءة (${when}). لو الرقم صح أكّده، ولو غلطة كتابة صحّحه.`,
-  );
+  if (last !== null && last > 0) {
+    const change = price / last - 1;
+    return Math.abs(change) > limit ? `سعر ${name} هيتغير ${pct(change)} عن آخر قراءة (${when}).` : null;
+  }
+  // First reading: nothing of its own to compare with.
+  if (meta?.reference) {
+    const [ref] = state.prices.get(meta.reference, day);
+    if (ref !== null && ref > 0) {
+      const change = price / ref - 1;
+      return Math.abs(change) > limit ? `أول سعر لـ ${name} هو ${qty.format(price)}، وده ${pct(change)} عن السعر المرجعي (${qty.format(ref)}).` : null;
+    }
+  }
+  if ((meta?.bucket === "cash" || meta?.fixed_price) && Math.abs(price - 1) < 1e-9) return null;
+  return `ده أول سعر يتسجل لـ ${name}: ${qty.format(price)} ${meta?.unit ? `لكل ${meta.unit}` : "للوحدة"}.`;
+}
+
+function buyTermsWarning(state: OpState, day: ISODate, inst: string, amount: number): string | null {
+  const meta = state.config.instruments[inst];
+  const terms = meta?.terms;
+  if (!terms) return null;
+  const held = (positions(state.ledger, day).units[inst] ?? 0) > EPS;
+  if (!held && terms.min_buy && amount < terms.min_buy - TOL) {
+    return `أقل شراء لـ ${meta.name} حسب شروطه ${money.format(terms.min_buy)} جنيه.`;
+  }
+  if (terms.step) {
+    const over = amount - (held ? 0 : terms.min_buy ?? 0);
+    const remainder = Math.abs(over / terms.step - Math.round(over / terms.step));
+    if (remainder > 1e-6) return `${meta.name} بتزيد بمضاعفات ${money.format(terms.step)} جنيه حسب شروطها.`;
+  }
+  return null;
+}
+
+/** Units bought at least `lock_days` ago, less everything already sold (oldest first). */
+function sellTermsWarning(state: OpState, day: ISODate, inst: string, units: number): string | null {
+  const meta = state.config.instruments[inst];
+  const lock = meta?.terms?.lock_days;
+  if (!lock) return null;
+  const cutoff = new Date(Date.parse(`${day}T00:00:00Z`) - lock * 86_400_000).toISOString().slice(0, 10);
+  let free = 0;
+  for (const r of state.ledger) {
+    if (r.instrument !== inst || r.date > day) continue;
+    if (r.type === "buy" && r.date <= cutoff) free += r.units;
+    if (r.type === "sell") free -= r.units;
+  }
+  if (units <= Math.max(0, free) + EPS) return null;
+  return `${meta.name} بتتسترد بعد ${lock} يوم من الشراء حسب شروطها، والكمية دي لسه ما كملتش المدة.`;
+}
+
+function confirmOrThrow(warnings: Array<string | null>, confirmed: unknown): void {
+  const found = warnings.filter((w): w is string => Boolean(w));
+  if (found.length === 0 || confirmed === true) return;
+  throw new ConfirmError(`${found.join(" ")} لو ده اللي حصل فعلًا أكّده، ولو غلطة كتابة صحّحه.`);
+}
+
+/** Booleans arrive as JSON; anything else (the text "false", 0, 1) is a caller bug, not a choice. */
+function flag(value: unknown, name: string): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value !== "boolean") throw new OpError(`${name}: القيمة لازم تكون true أو false.`);
+  return value;
 }
 
 export function deposit(state: OpState, day: ISODate, amount: unknown, text?: unknown): OpResult {
@@ -135,7 +189,7 @@ export function buy(state: OpState, day: ISODate, input: TradeInput): OpResult {
     }
     units = net / price;
   }
-  guardJump(state, day, inst, price, input.confirm);
+  confirmOrThrow([priceWarning(state, day, inst, price), buyTermsWarning(state, day, inst, amount)], flag(input.confirm, "confirm"));
   return {
     ledger: { date: day, type: "buy", instrument: inst, units, price, amount, fee, note: note(input.note) },
     price: { date: day, instrument: inst, price, source: "trade" },
@@ -146,13 +200,13 @@ export function buy(state: OpState, day: ISODate, input: TradeInput): OpResult {
 export function sell(state: OpState, day: ISODate, input: TradeInput): OpResult {
   const inst = instrumentOf(state, input.instrument);
   const held = positions(state.ledger, day).units[inst] ?? 0;
-  const units = input.sell_all ? held : given(input.units) ? positive(input.units, "الكمية") : 0;
+  const units = flag(input.sell_all, "sell_all") ? held : given(input.units) ? positive(input.units, "الكمية") : 0;
   if (units <= EPS || units > held + EPS) {
     throw new OpError(`المملوك من ${inst} هو ${qty.format(held)}؛ مينفعش تبيع ${qty.format(units)}.`);
   }
   const price = given(input.price) ? positive(input.price, "السعر") : state.prices.get(inst, day)[0];
   if (!price) throw new OpError(`مفيش سعر معروف لـ ${inst}: اكتب السعر.`);
-  guardJump(state, day, inst, price, input.confirm);
+  confirmOrThrow([priceWarning(state, day, inst, price), sellTermsWarning(state, day, inst, units)], flag(input.confirm, "confirm"));
   const gross = units * price;
   const fee = feeOf(gross, input.fee, input.fee_pct);
   if (fee > gross) throw new OpError("الرسوم أكبر من حصيلة البيع.");
@@ -166,6 +220,11 @@ export function sell(state: OpState, day: ISODate, input: TradeInput): OpResult 
 export function income(state: OpState, day: ISODate, instrument: unknown, amount: unknown, text?: unknown): OpResult {
   const inst = instrumentOf(state, instrument);
   const a = positive(amount, "المبلغ");
+  // A payout can arrive after the holding was sold, so "held at some point up to that day" is the test.
+  const everHeld = state.ledger.some((r) => r.type === "buy" && r.instrument === inst && r.date <= day);
+  if (!everHeld) {
+    throw new OpError(`مفيش شراء مسجّل لـ ${state.config.instruments[inst].name} لحد ${day}، فمينفعش يتسجل منه عائد. سجّل الشراء الأول.`);
+  }
   return {
     ledger: { ...blank, date: day, type: "income", instrument: inst, amount: a, note: note(text) },
     message: `تم تسجيل عائد ${money.format(a)} جنيه من ${inst}.`,
@@ -176,7 +235,7 @@ export function setPrice(state: OpState, day: ISODate, instrument: unknown, pric
   const inst = String(instrument ?? "").trim().toUpperCase();
   if (!/^[A-Z0-9_]{1,24}$/.test(inst)) throw new OpError("اسم الأداة مطلوب (حروف إنجليزية وأرقام).");
   const p = positive(price, "السعر");
-  guardJump(state, day, inst, p, confirmed);
+  confirmOrThrow([priceWarning(state, day, inst, p)], flag(confirmed, "confirm"));
   return { price: { date: day, instrument: inst, price: p, source }, message: `سعر ${inst} = ${qty.format(p)}.` };
 }
 
@@ -187,7 +246,7 @@ export function mark(state: OpState, day: ISODate, instrument: unknown, value: u
   const units = positions(state.ledger, day).units[inst] ?? 0;
   if (units <= EPS) throw new OpError(`مفيش ${inst} مملوك في الدفتر ده بتاريخ ${day}.`);
   const price = v / units;
-  guardJump(state, day, inst, price, confirmed);
+  confirmOrThrow([priceWarning(state, day, inst, price)], flag(confirmed, "confirm"));
   return {
     price: { date: day, instrument: inst, price, source: `mark:${state.book}` },
     message: `تحديث ${inst}: ${qty.format(units)} × ${qty.format(price)} = ${money.format(v)} جنيه.`,

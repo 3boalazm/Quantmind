@@ -394,7 +394,7 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
 
     if dd["current"] <= -rules["stop_drawdown"] + EPS:
         alert("action", "stop_drawdown",
-              f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب.")
+              f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب. القاعدة بتوقف الشراء بس ومش بتبيع حاجة.")
     elif dd["current"] <= -rules["warn_drawdown"] + EPS:
         alert("warn", "warn_drawdown",
               f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.")

@@ -52,6 +52,12 @@ export interface Instrument {
   unit?: string;
   fixed_price?: boolean;
   trend_rule?: TrendRule;
+  /** Usual fees, in percent. They pre-fill the entry form; the ledger stores what was actually paid. */
+  fees?: { buy_pct?: number; sell_pct?: number };
+  /** A reference series (same unit and currency) to sanity-check a first price against. */
+  reference?: string;
+  /** Product terms: smallest first purchase, top-up multiple, and days before it can be redeemed. */
+  terms?: { min_buy?: number; step?: number; lock_days?: number };
 }
 
 export interface Bucket {
@@ -670,7 +676,7 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   const alert = (level: Alert["level"], code: string, text: string) => alerts.push({ level, code, text });
 
   if (dd.current <= -rules.stop_drawdown + EPS) {
-    alert("action", "stop_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب.`);
+    alert("action", "stop_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب. القاعدة بتوقف الشراء بس ومش بتبيع حاجة.`);
   } else if (dd.current <= -rules.warn_drawdown + EPS) {
     alert("warn", "warn_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.`);
   }

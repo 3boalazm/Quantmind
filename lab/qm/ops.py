@@ -118,6 +118,9 @@ def sell(store, day: date, instrument: str, units=None, sell_all: bool = False, 
 def income(store, day: date, instrument: str, amount, note: str = "") -> str:
     inst = _instrument(store, instrument)
     amount = _positive(amount, "amount")
+    # a payout can arrive after the holding was sold, so "held at some point up to that day" is the test
+    if not any(r["type"] == "buy" and r["instrument"] == inst and r["date"] <= day for r in store.ledger()):
+        raise OpError(f"no purchase of {inst} recorded up to {day}: record the buy before its income")
     store.append_ledger(date=day, type="income", instrument=inst, amount=amount, note=note or "")
     return f"income {inst} {amount:,.2f}"
 

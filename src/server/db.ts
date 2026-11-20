@@ -20,10 +20,27 @@ export function databaseUrl(): string | undefined {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL || undefined;
 }
 
+/**
+ * The driver already verifies the server certificate fully for `sslmode=require` (and warns that
+ * this reading may change in a later major version). Spell out the strict mode so the behaviour
+ * cannot quietly weaken on an upgrade.
+ */
+function strictSsl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const mode = parsed.searchParams.get("sslmode");
+    if (mode === "require" || mode === "prefer" || mode === "verify-ca") parsed.searchParams.set("sslmode", "verify-full");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function pool(): Pool {
   if (!globalForDb.qmPool) {
-    const connectionString = databaseUrl();
-    if (!connectionString) throw new NotConfiguredError();
+    const raw = databaseUrl();
+    if (!raw) throw new NotConfiguredError();
+    const connectionString = strictSsl(raw);
     globalForDb.qmPool = new Pool({ connectionString, max: 3, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000 });
   }
   return globalForDb.qmPool;

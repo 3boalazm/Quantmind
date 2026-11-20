@@ -77,6 +77,10 @@ def main():
             if inst == "GOLD":
                 page.get_by_label(re.compile("الرسوم")).fill("1")
             page.get_by_role("button", name="تسجيل شراء").click()
+            if prices[inst]:
+                # the first price of an instrument is always shown back for confirmation
+                expect(page.get_by_role("alertdialog")).to_contain_text("أول سعر")
+                page.get_by_role("button", name="الرقم صح، احفظ").click()
             expect(page.get_by_role("status")).to_contain_text("شراء")
         expect(page.locator("table tbody tr")).to_have_count(4)
         shot(page, "04-ledger")

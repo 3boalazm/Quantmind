@@ -41,7 +41,7 @@ class CliTests(unittest.TestCase):
         # a month later the app shows 1,217.50 in the cash fund
         self.run_cli("mark", "CASH", 1217.5, day="2026-12-20")
         out = self.run_cli("status", day="2026-12-20")
-        self.assertIn("stale_price", out)  # gold and index were not updated
+        self.assertNotIn("stale_price", out)  # a month-old reading is within the monthly update cycle
         s = engine.summary(ws.config(), ws.ledger(), ws.prices(), ws.ledger()[-1]["date"].replace(month=12))
         self.assertAlmostEqual(s["total"], 1217.5 + 396 + 400)
 

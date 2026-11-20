@@ -4,8 +4,20 @@
   "monthly_contribution": 2000,
   "instruments": {
     "CASH": {"name": "كلاودز شريعة (ثاندر)", "bucket": "cash", "unit": "جنيه"},
-    "CERT": {"name": "شهادة الخير المتغيرة (بيت التمويل الكويتي)", "bucket": "cash", "unit": "جنيه", "fixed_price": true},
-    "GOLD": {"name": "دهب ثاندر (عيار 24)", "bucket": "gold", "unit": "جرام"},
+    "CERT": {
+      "name": "شهادة الخير المتغيرة (بيت التمويل الكويتي)",
+      "bucket": "cash",
+      "unit": "جنيه",
+      "fixed_price": true,
+      "terms": {"min_buy": 5000, "step": 1000, "lock_days": 180}
+    },
+    "GOLD": {
+      "name": "دهب ثاندر (عيار 24)",
+      "bucket": "gold",
+      "unit": "جرام",
+      "fees": {"buy_pct": 1, "sell_pct": 1},
+      "reference": "REF_GOLD24_EGP"
+    },
     "INDEX": {"name": "بلتون وفرة BWA (مؤشر الشريعة EGX33)", "bucket": "index", "unit": "وثيقة"},
     "ACTIVE": {"name": "أزيموت فرص الشريعة ASO", "bucket": "active", "unit": "وثيقة"},
     "REALESTATE": {"name": "عقار مجزأ SAFE", "bucket": "real_estate", "unit": "حصة"},
@@ -58,7 +70,7 @@
     "warn_drawdown": 0.10,
     "stop_drawdown": 0.25,
     "stop_buckets": ["cash", "gold"],
-    "stale_days": 10,
+    "stale_days": 35,
     "max_price_jump": 0.35,
     "min_cash_yield": 0.15,
     "review_min_days": 150,

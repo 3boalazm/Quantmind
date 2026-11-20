@@ -18,7 +18,7 @@ function apply(ledger: LedgerRow[], result: ops.OpResult): LedgerRow[] {
 describe("write operations", () => {
   it("deposit then buy keeps the wallet exact", () => {
     let ledger = apply([], ops.deposit(state(), DAY, 2000));
-    const buy = ops.buy(state(ledger), DAY, { instrument: "gold", amount: "400", price: 6765, fee_pct: 1 });
+    const buy = ops.buy(state(ledger), DAY, { instrument: "gold", amount: "400", price: 6765, fee_pct: 1, confirm: true });
     expect(buy.ledger?.fee).toBeCloseTo(4);
     expect(buy.ledger?.units).toBeCloseTo(396 / 6765, 12);
     expect(buy.price).toEqual({ date: DAY, instrument: "GOLD", price: 6765, source: "trade" });
@@ -36,7 +36,7 @@ describe("write operations", () => {
   it("other instruments need a price or the units received", () => {
     const ledger = apply([], ops.deposit(state(), DAY, 1000));
     expect(() => ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400 })).toThrow(ops.OpError);
-    const byUnits = ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400, units: 200 });
+    const byUnits = ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400, units: 200, confirm: true });
     expect(byUnits.ledger?.price).toBe(2);
   });
 
@@ -65,7 +65,7 @@ describe("write operations", () => {
   it("mark turns an app balance into a unit price", () => {
     let ledger = apply([], ops.deposit(state(), DAY, 1200));
     ledger = apply(ledger, ops.buy(state(ledger), DAY, { instrument: "CASH", amount: 1200 }));
-    const result = ops.mark(state(ledger), "2026-12-20", "CASH", 1218);
+    const result = ops.mark(state(ledger, [{ date: DAY, instrument: "CASH", price: 1 }]), "2026-12-20", "CASH", 1218);
     expect(result.price?.price).toBeCloseTo(1.015, 12);
     expect(result.price?.source).toBe("mark:paper");
     expect(() => ops.mark(state(ledger), DAY, "GOLD", 500)).toThrow(ops.OpError);
@@ -117,13 +117,81 @@ describe("price sanity check", () => {
   it("lets ordinary moves, first readings and reference series through", () => {
     const ledger = funded();
     expect(ops.mark(state(ledger, prices), DAY, "GOLD", 7175).price?.price).toBe(7175);
-    expect(ops.setPrice(state(ledger, prices), DAY, "INDEX", 2.07).price?.price).toBe(2.07);
+    expect(ops.setPrice(state(ledger, prices), DAY, "INDEX", 2.07, "manual", true).price?.price).toBe(2.07);
     const ref = [{ date: "2026-11-01", instrument: "REF_BTCUSD", price: 65000 }];
     expect(ops.setPrice(state([], ref), DAY, "REF_BTCUSD", 20000).price?.price).toBe(20000);
   });
 
   it("a ConfirmError is still an OpError, so nothing is stored unless the caller opts in", () => {
     expect(new ops.ConfirmError("x")).toBeInstanceOf(ops.OpError);
+  });
+
+  it("asks about the very first price of an instrument, showing the unit price", () => {
+    const ledger = apply([], ops.deposit(state(), DAY, 5000));
+    expect(() => ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400, price: 2.07 })).toThrow(/2\.07/);
+    expect(() => ops.setPrice(state(ledger), DAY, "ACTIVE", 11.8)).toThrow(ops.ConfirmError);
+    // a cash-like fund starting at 1 pound per unit is the convention, not a surprise
+    expect(ops.buy(state(ledger), DAY, { instrument: "CASH", amount: 1200 }).ledger?.price).toBe(1);
+  });
+
+  it("checks a first gold price against the reference gram price when there is one", () => {
+    const ledger = apply([], ops.deposit(state(), DAY, 5000));
+    const ref = [{ date: DAY, instrument: "REF_GOLD24_EGP", price: 6500 }];
+    expect(ops.buy(state(ledger, ref), DAY, { instrument: "GOLD", amount: 400, price: 6765 }).ledger?.price).toBe(6765);
+    expect(() => ops.buy(state(ledger, ref), DAY, { instrument: "GOLD", amount: 400, price: 676.5 })).toThrow(ops.ConfirmError);
+  });
+
+  it("only real booleans count as flags", () => {
+    let ledger = apply([], ops.deposit(state(), DAY, 1000));
+    ledger = apply(ledger, ops.buy(state(ledger), DAY, { instrument: "CASH", amount: 1000 }));
+    const prices = [{ date: DAY, instrument: "CASH", price: 1 }];
+    for (const bad of ["false", "true", 0, 1, "yes", {}]) {
+      expect(() => ops.sell(state(ledger, prices), DAY, { instrument: "CASH", units: 10, sell_all: bad })).toThrow(ops.OpError);
+      expect(() => ops.sell(state(ledger, prices), DAY, { instrument: "CASH", units: 10, confirm: bad })).toThrow(ops.OpError);
+    }
+    expect(ops.sell(state(ledger, prices), DAY, { instrument: "CASH", units: 10, sell_all: false }).ledger?.units).toBe(10);
+    expect(ops.sell(state(ledger, prices), DAY, { instrument: "CASH", sell_all: true }).ledger?.units).toBe(1000);
+  });
+});
+
+describe("product terms and income", () => {
+  const cert = [{ date: "2026-01-10", instrument: "CERT", price: 1 }];
+
+  it("the certificate: 5,000 minimum, top-ups in thousands", () => {
+    const funded = apply([], ops.deposit(state(), "2026-01-10", 20000));
+    expect(() => ops.buy(state(funded), "2026-01-10", { instrument: "CERT", amount: 3000 })).toThrow(ops.ConfirmError);
+    expect(() => ops.buy(state(funded), "2026-01-10", { instrument: "CERT", amount: 5500 })).toThrow(ops.ConfirmError);
+    const first = ops.buy(state(funded), "2026-01-10", { instrument: "CERT", amount: 5000 });
+    expect(first.ledger?.units).toBe(5000);
+    const held = apply(funded, first);
+    expect(ops.buy(state(held, cert), "2026-02-10", { instrument: "CERT", amount: 1000 }).ledger?.units).toBe(1000);
+    expect(() => ops.buy(state(held, cert), "2026-02-10", { instrument: "CERT", amount: 1500 })).toThrow(ops.ConfirmError);
+    // the bank is the authority: a confirmed entry is recorded as it happened
+    expect(ops.buy(state(held, cert), "2026-02-10", { instrument: "CERT", amount: 1500, confirm: true }).ledger?.amount).toBe(1500);
+  });
+
+  it("the certificate cannot be redeemed in its first 180 days without confirmation, lot by lot", () => {
+    let ledger = apply([], ops.deposit(state(), "2026-01-10", 20000));
+    ledger = apply(ledger, ops.buy(state(ledger), "2026-01-10", { instrument: "CERT", amount: 5000 }));
+    ledger = apply(ledger, ops.buy(state(ledger, cert), "2026-06-01", { instrument: "CERT", amount: 2000 }));
+    expect(() => ops.sell(state(ledger, cert), "2026-03-01", { instrument: "CERT", units: 1000 })).toThrow(ops.ConfirmError);
+    // on 20 July the first 5,000 is free (191 days) and the June 2,000 is not
+    expect(ops.sell(state(ledger, cert), "2026-07-20", { instrument: "CERT", units: 5000 }).ledger?.amount).toBe(5000);
+    expect(() => ops.sell(state(ledger, cert), "2026-07-20", { instrument: "CERT", units: 5001 })).toThrow(ops.ConfirmError);
+    expect(() => ops.sell(state(ledger, cert), "2026-07-20", { instrument: "CERT", sell_all: true })).toThrow(ops.ConfirmError);
+    expect(ops.sell(state(ledger, cert), "2026-12-01", { instrument: "CERT", sell_all: true }).ledger?.units).toBe(7000);
+  });
+
+  it("income needs a purchase of that instrument on or before the day", () => {
+    expect(() => ops.income(state(), DAY, "GOLD", 500)).toThrow(ops.OpError);
+    let ledger = apply([], ops.deposit(state(), "2026-11-01", 1000));
+    ledger = apply(ledger, ops.buy(state(ledger), "2026-11-01", { instrument: "CASH", amount: 1000 }));
+    expect(() => ops.income(state(ledger), "2026-10-31", "CASH", 10)).toThrow(ops.OpError);
+    expect(ops.income(state(ledger), DAY, "CASH", 10).ledger?.amount).toBe(10);
+    // sold out since, and a late payout still arrives
+    const prices = [{ date: "2026-11-01", instrument: "CASH", price: 1 }];
+    ledger = apply(ledger, ops.sell(state(ledger, prices), "2026-11-10", { instrument: "CASH", sell_all: true }));
+    expect(ops.income(state(ledger), DAY, "CASH", 10).ledger?.amount).toBe(10);
   });
 });
 

@@ -40,6 +40,7 @@ export function LedgerScreen() {
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [feePct, setFeePct] = useState("");
+  const [feeTouched, setFeeTouched] = useState(false);
   const [note, setNote] = useState("");
   const [sellAll, setSellAll] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -60,6 +61,12 @@ export function LedgerScreen() {
 
   const held = data.summary.holdings.find((h) => h.instrument === instrument);
   const meta = data.config.instruments[instrument];
+  const usualFee = op === "buy" ? meta?.fees?.buy_pct : op === "sell" ? meta?.fees?.sell_pct : undefined;
+
+  // The instrument's usual fee fills the field until you type your own; the ledger keeps what you submit.
+  useEffect(() => {
+    if (!feeTouched) setFeePct(usualFee === undefined ? "" : String(usualFee));
+  }, [feeTouched, usualFee]);
   const needsInstrument = op === "buy" || op === "sell" || op === "income";
 
   const submit = async (event: React.FormEvent) => {
@@ -83,6 +90,7 @@ export function LedgerScreen() {
       setUnitPrice("");
       setNote("");
       setSellAll(false);
+      setFeeTouched(false);
     }
   };
 
@@ -151,7 +159,12 @@ export function LedgerScreen() {
                   <Input type="number" inputMode="decimal" dir="ltr" min="0" step="any" disabled={Boolean(qty)} value={qty ? "" : unitPrice} onChange={(event) => setUnitPrice(event.target.value)} />
                 </Field>
                 <Field label="الرسوم %" optional="اختياري">
-                  <Input type="number" inputMode="decimal" dir="ltr" min="0" max="100" step="any" value={feePct} onChange={(event) => setFeePct(event.target.value)} />
+                  <Input type="number" inputMode="decimal" dir="ltr" min="0" max="100" step="any" value={feePct}
+                    onChange={(event) => {
+                      setFeeTouched(true);
+                      setFeePct(event.target.value);
+                    }}
+                  />
                 </Field>
               </>
             ) : null}
@@ -165,7 +178,12 @@ export function LedgerScreen() {
                   <Input type="number" inputMode="decimal" dir="ltr" min="0" step="any" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} />
                 </Field>
                 <Field label="الرسوم %" optional="اختياري">
-                  <Input type="number" inputMode="decimal" dir="ltr" min="0" max="100" step="any" value={feePct} onChange={(event) => setFeePct(event.target.value)} />
+                  <Input type="number" inputMode="decimal" dir="ltr" min="0" max="100" step="any" value={feePct}
+                    onChange={(event) => {
+                      setFeeTouched(true);
+                      setFeePct(event.target.value);
+                    }}
+                  />
                 </Field>
                 <div className="row row--between full pill-row">
                   <span className="t-small grow">
@@ -187,6 +205,18 @@ export function LedgerScreen() {
             <Field label="ملاحظة" optional="اختياري" className="full">
               <Input maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} />
             </Field>
+
+            {usualFee !== undefined && (op === "buy" || op === "sell") ? (
+              <p className="full t-small t-muted">
+                الرسوم المعتادة لـ {meta?.name}: <N>{`${usualFee}%`}</N>. اتملت تلقائيًا، وعدّلها لو التطبيق خصم رقم مختلف.
+              </p>
+            ) : null}
+            {meta?.terms && (op === "buy" || op === "sell") ? (
+              <p className="full t-small t-muted">
+                شروط {meta.name}: أقل شراء <N>{(meta.terms.min_buy ?? 0).toLocaleString("en-US")}</N> جنيه، الزيادة بمضاعفات{" "}
+                <N>{(meta.terms.step ?? 0).toLocaleString("en-US")}</N>، والاسترداد بعد <N>{meta.terms.lock_days ?? 0}</N> يوم.
+              </p>
+            ) : null}
 
             <div className="full row row--between row--wrap">
               <span className="t-small t-muted">
