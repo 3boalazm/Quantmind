@@ -201,10 +201,14 @@ export async function writeSetting(q: Queryable, key: string, value: unknown): P
 /* ---------- login throttling ---------- */
 export const LOGIN_WINDOW_MINUTES = 15;
 export const LOGIN_MAX_FAILURES = 5;
+/** Across all addresses: a guesser who rotates addresses still runs into this. */
+export const LOGIN_MAX_FAILURES_GLOBAL = 20;
 
-export async function recentFailures(q: Queryable, ip: string): Promise<number> {
+/** Failed sign-ins in the window, for one address or (ip = null) for everyone. */
+export async function recentFailures(q: Queryable, ip: string | null): Promise<number> {
   const { rows } = await q.query<{ n: string }>(
-    `SELECT count(*) AS n FROM auth_attempts WHERE ip = $1 AND at > now() - make_interval(mins => $2)`,
+    `SELECT count(*) AS n FROM auth_attempts
+      WHERE ($1::text IS NULL OR ip = $1) AND at > now() - make_interval(mins => $2)`,
     [ip, LOGIN_WINDOW_MINUTES],
   );
   return Number(rows[0].n);

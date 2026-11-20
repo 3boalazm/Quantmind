@@ -95,6 +95,9 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
 }
 
 export function clientIp(request: Request): string {
+  // On Vercel these two are set by the platform and cannot be supplied by the caller.
+  const platform = request.headers.get("x-vercel-forwarded-for") ?? request.headers.get("x-real-ip");
+  if (platform) return platform.split(",")[0].trim();
   const forwarded = request.headers.get("x-forwarded-for");
-  return (forwarded ? forwarded.split(",")[0].trim() : "") || request.headers.get("x-real-ip") || "local";
+  return (forwarded ? forwarded.split(",")[0].trim() : "") || "local";
 }
