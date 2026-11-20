@@ -31,6 +31,13 @@ def buy(d, inst, amount, price):
     return row(d, "buy", inst, units=amount / price, price=price, amount=amount)
 
 
+def btc_series(up, days=210):
+    """A flat reference series whose last five closes sit above (up) or below the 200-day average."""
+    dates = [D0 - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    closes = [100.0] * (days - 5) + ([120.0] * 5 if up else [80.0] * 5)
+    return [(d, "REF_BTCUSD", p) for d, p in zip(dates, closes)]
+
+
 class PlanTests(unittest.TestCase):
     def test_first_deposit_splits_60_20_20(self):
         c = cfg()
@@ -85,16 +92,79 @@ class PlanTests(unittest.TestCase):
     def test_crypto_respects_minimum_order(self):
         c = cfg()
         c["crypto"]["enabled"] = True
-        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0))
+        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), *btc_series(up=True))
         ledger = [row(D0, "deposit", amount=5000), buy(D0, "CASH", 3000, 1.0),
                   buy(D0, "GOLD", 1000, 6500.0), buy(D0, "INDEX", 1000, 2.0)]
         p = engine.summary(c, ledger, prices, D0, add=2000)["plan"]
         crypto = [o["amount"] for o in p["orders"] if o["bucket"] == "crypto"]
         self.assertTrue(crypto and crypto[0] >= 400)
+        self.assertEqual(p["blocked"], [])
 
         small = engine.summary(c, ledger, prices, D0, add=300)["plan"]
         self.assertFalse([o for o in small["orders"] if o["bucket"] == "crypto"])
         self.assertIn("crypto", small["parked"])
+
+
+    def _crypto_plan(self, *extra):
+        c = cfg()
+        c["crypto"]["enabled"] = True
+        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), *extra)
+        ledger = [row(D0, "deposit", amount=5000), buy(D0, "CASH", 3000, 1.0),
+                  buy(D0, "GOLD", 1000, 6500.0), buy(D0, "INDEX", 1000, 2.0)]
+        return engine.summary(c, ledger, prices, D0, add=2000)
+
+    def test_no_crypto_order_while_the_trend_rule_says_wait(self):
+        s = self._crypto_plan(*btc_series(up=False))
+        self.assertIn("trend_blocked", [a["code"] for a in s["alerts"]])
+        self.assertEqual(s["plan"]["blocked"], ["crypto"])
+        self.assertFalse([o for o in s["plan"]["orders"] if o["bucket"] == "crypto"])
+        self.assertFalse([t for t in s["plan"]["transfers"] if t["to_bucket"] == "crypto"])
+        self.assertNotIn("crypto", s["plan"]["parked"])
+        # the money still gets placed, just elsewhere
+        self.assertAlmostEqual(sum(o["amount"] for o in s["plan"]["orders"]), 2000)
+
+    def test_no_crypto_order_until_the_trend_rule_has_enough_history(self):
+        s = self._crypto_plan()
+        self.assertIn("trend_no_data", [a["code"] for a in s["alerts"]])
+        self.assertEqual(s["plan"]["blocked"], ["crypto"])
+        self.assertFalse([o for o in s["plan"]["orders"] if o["bucket"] == "crypto"])
+
+    def test_stop_rule_at_stage_three_leaves_only_cash_and_gold_open(self):
+        c = cfg()
+        d1, d2 = D0 + timedelta(days=30), D0 + timedelta(days=60)
+        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), (D0, "ACTIVE", 2.0),
+                       (d1, "INDEX", 2.0), (d2, "INDEX", 0.2), (d2, "ACTIVE", 0.2))
+        # far more cash than target, so without the stop rule a real-estate lot would be proposed
+        ledger = [row(D0, "deposit", amount=60000), buy(D0, "CASH", 24000, 1.0), buy(D0, "GOLD", 4000, 6500.0),
+                  buy(D0, "INDEX", 16000, 2.0), buy(D0, "ACTIVE", 16000, 2.0)]
+        calm = engine.summary(c, ledger, prices, d1, add=12000)["plan"]
+        self.assertFalse(calm["stopped"])
+        self.assertTrue([t for t in calm["transfers"] if t["to_bucket"] == "real_estate"]
+                        or [o for o in calm["orders"] if o["bucket"] == "real_estate"])
+
+        s = engine.summary(c, ledger, prices, d2, add=12000)
+        p = s["plan"]
+        self.assertTrue(p["stopped"])
+        self.assertEqual(s["stage"]["name"], "3")
+        self.assertLessEqual({o["bucket"] for o in p["orders"]}, {"cash", "gold"})
+        self.assertEqual(p["transfers"], [])
+        self.assertNotIn("real_estate", p["parked"])
+        self.assertAlmostEqual(sum(o["amount"] for o in p["orders"]), 12000)
+        # gold is filled to its 15% target and no further; the rest waits in cash
+        got = {o["bucket"]: o["amount"] for o in p["orders"]}
+        total_after = s["total"] + 12000
+        gold_value = next(a["value"] for a in s["allocation"] if a["bucket"] == "gold")
+        self.assertLessEqual(gold_value + got["gold"], 0.15 * total_after + 1)
+        self.assertGreater(got["cash"], got["gold"])
+
+    def test_stop_rule_falls_back_to_risk_flags_without_a_bucket_list(self):
+        c = cfg()
+        del c["rules"]["stop_buckets"]
+        d1, d2 = D0 + timedelta(days=30), D0 + timedelta(days=60)
+        prices = store((D0, "INDEX", 2.0), (d1, "INDEX", 2.4), (d2, "INDEX", 1.6))
+        ledger = [row(D0, "deposit", amount=1000), buy(D0, "INDEX", 1000, 2.0)]
+        p = engine.summary(c, ledger, prices, d2, add=2000)["plan"]
+        self.assertEqual({o["bucket"] for o in p["orders"]}, {"cash", "gold"})
 
 
 class PerformanceTests(unittest.TestCase):
@@ -195,7 +265,7 @@ class RuleTests(unittest.TestCase):
         prices = store((D0, "CASH", 1.0), (d1, "CASH", 1.09), (D0, "INDEX", 2.0), (d1, "INDEX", 2.6))
         ledger = [row(D0, "deposit", amount=2000), buy(D0, "CASH", 1000, 1.0), buy(D0, "INDEX", 1000, 2.0)]
         self.assertEqual(engine.summary(c, ledger, prices, D0 + timedelta(days=10))["review"]["verdict"], "early")
-        self.assertEqual(engine.summary(c, ledger, prices, d1)["review"]["verdict"], "increase")
+        self.assertEqual(engine.summary(c, ledger, prices, d1)["review"]["verdict"], "on_track")
 
     def test_targets_must_sum_to_100(self):
         c = cfg()

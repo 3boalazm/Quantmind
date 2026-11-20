@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isISODate } from "@/lib/engine";
-import { OpError } from "@/lib/ops";
+import { ConfirmError, OpError } from "@/lib/ops";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { isBook, today, type Book } from "./config";
 import { NotConfiguredError } from "./db";
@@ -82,6 +82,9 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
     return await fn();
   } catch (error) {
     if (error instanceof HttpError) return fail(error.status, error.message);
+    if (error instanceof ConfirmError) {
+      return NextResponse.json({ error: error.message, confirm: true }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     if (error instanceof OpError) return fail(400, error.message);
     if (error instanceof NotConfiguredError) {
       return fail(503, "قاعدة البيانات لسه متربطتش. أضف Neon من تبويب Storage في Vercel وأعد النشر.");

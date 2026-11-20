@@ -8,6 +8,7 @@ import { NAVIGATION } from "@/lib/navigation";
 import { BOOK_LABEL, type Book } from "@/lib/types";
 import { PortfolioProvider, usePortfolio } from "@/state/portfolio-provider";
 import { Avatar, Button, Card, cx, Empty, IconButton, Select, Toast } from "@/ui";
+import { Mixed } from "@/ui/text";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+      <ConfirmHost />
       <ToastHost />
     </PortfolioProvider>
   );
@@ -186,6 +188,45 @@ function DataGate({ children }: { children: ReactNode }) {
       <div className="card card--soft skeleton span-3" style={{ minHeight: 150 }} />
       <div className="card card--soft skeleton span-3" style={{ minHeight: 150 }} />
       <div className="card card--soft skeleton span-3" style={{ minHeight: 150 }} />
+    </div>
+  );
+}
+
+/** Asks before storing an entry the server flagged as unusual. */
+function ConfirmHost() {
+  const { pending, answerPending } = usePortfolio();
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") answerPending(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [answerPending, pending]);
+  if (!pending) return null;
+  return (
+    <div className="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+      <Card className="modal__panel">
+        <div className="row">
+          <span className="bubble">
+            <TriangleAlert />
+          </span>
+          <h2 id="confirm-title" className="t-title">
+            راجع الرقم قبل الحفظ
+          </h2>
+        </div>
+        <p id="confirm-text" className="t-label" style={{ lineHeight: 1.7 }}>
+          <Mixed text={pending.message} />
+        </p>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Button variant="ghost" onClick={() => answerPending(false)}>
+            رجوع للتصحيح
+          </Button>
+          <Button variant="ink" onClick={() => answerPending(true)}>
+            الرقم صح، احفظ
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

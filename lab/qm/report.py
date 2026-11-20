@@ -11,7 +11,7 @@ LEVEL = {
     "warn": ("⚠️", "تنبيه", "warning"),
     "info": ("ℹ️", "معلومة", "info"),
 }
-VERDICT = {"early": "بدري على الحكم", "increase": "كمّل وزوّد", "hold": "كمّل من غير زيادة"}
+VERDICT = {"early": "بدري على الحكم", "on_track": "ماشية مع الخطة", "hold": "كمّل من غير زيادة"}
 
 CSS = """
 .qm{color-scheme:light;--surface:#fcfcfb;--panel:#ffffff;--line:#e4e3de;--ink:#0b0b0b;--ink2:#52514e;--ink3:#7b7a75;

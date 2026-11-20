@@ -87,7 +87,7 @@ export function Dashboard() {
   const orders = s.plan.orders.filter((order) => !query || `${order.name} ${order.label} ${order.instrument}`.toLocaleLowerCase().includes(query));
 
   const empty = data.ledger.length === 0;
-  const verdict = s.review.verdict === "increase" ? "الأداء يسمح بالزيادة" : s.review.verdict === "hold" ? "كمّل بنفس المبلغ" : "لسه بدري على الحكم";
+  const verdict = s.review.verdict === "on_track" ? "الأداء ماشي مع الخطة" : s.review.verdict === "hold" ? "كمّل بنفس المبلغ" : "لسه بدري على الحكم";
 
   const shortcuts: Array<{ href: string; title: string; hint: string; tone: Tone; icon: React.ReactNode }> = [
     { href: "/plan", title: "خطة الشراء", hint: "توزيع مبلغ الشهر والمراحل الجاية", tone: "mint", icon: <ListChecks /> },

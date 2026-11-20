@@ -57,7 +57,9 @@
   "rules": {
     "warn_drawdown": 0.10,
     "stop_drawdown": 0.25,
+    "stop_buckets": ["cash", "gold"],
     "stale_days": 10,
+    "max_price_jump": 0.35,
     "min_cash_yield": 0.15,
     "review_min_days": 150,
     "review_benchmark_ratio": 0.98

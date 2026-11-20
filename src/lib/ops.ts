@@ -9,6 +9,9 @@ export const TOL = 0.005; // half a piastre
 
 export class OpError extends Error {}
 
+/** The entry is plausible but unusual: the caller must repeat it with `confirm: true`. */
+export class ConfirmError extends OpError {}
+
 export interface OpState {
   config: Config;
   ledger: LedgerRow[];
@@ -60,6 +63,26 @@ function note(value: unknown): string {
 
 const blank = { instrument: "", units: 0, price: 0, amount: 0, fee: 0, note: "" };
 
+/**
+ * Typing mistakes in a price or a balance flow straight into every figure on the dashboard, so a
+ * price far from the last reading is held until it is confirmed. Reference series are exempt:
+ * they come from a feed, not from a keyboard.
+ */
+function guardJump(state: OpState, day: ISODate, inst: string, price: number, confirmed: unknown): void {
+  if (confirmed === true || inst.startsWith("REF_")) return;
+  const limit = state.config.rules.max_price_jump;
+  if (!limit || limit <= 0) return;
+  const [last, when] = state.prices.get(inst, day);
+  if (last === null || last <= 0) return;
+  const change = price / last - 1;
+  if (Math.abs(change) <= limit) return;
+  const name = state.config.instruments[inst]?.name ?? inst;
+  const sign = change > 0 ? "+" : "-";
+  throw new ConfirmError(
+    `سعر ${name} هيتغير ${sign}${(Math.abs(change) * 100).toFixed(0)}% عن آخر قراءة (${when}). لو الرقم صح أكّده، ولو غلطة كتابة صحّحه.`,
+  );
+}
+
 export function deposit(state: OpState, day: ISODate, amount: unknown, text?: unknown): OpResult {
   const a = positive(amount, "المبلغ");
   return { ledger: { ...blank, date: day, type: "deposit", amount: a, note: note(text) }, message: `تم تسجيل إيداع ${money.format(a)} جنيه.` };
@@ -81,6 +104,7 @@ export interface TradeInput {
   fee_pct?: unknown;
   note?: unknown;
   sell_all?: unknown;
+  confirm?: unknown;
 }
 
 export function buy(state: OpState, day: ISODate, input: TradeInput): OpResult {
@@ -111,6 +135,7 @@ export function buy(state: OpState, day: ISODate, input: TradeInput): OpResult {
     }
     units = net / price;
   }
+  guardJump(state, day, inst, price, input.confirm);
   return {
     ledger: { date: day, type: "buy", instrument: inst, units, price, amount, fee, note: note(input.note) },
     price: { date: day, instrument: inst, price, source: "trade" },
@@ -127,6 +152,7 @@ export function sell(state: OpState, day: ISODate, input: TradeInput): OpResult 
   }
   const price = given(input.price) ? positive(input.price, "السعر") : state.prices.get(inst, day)[0];
   if (!price) throw new OpError(`مفيش سعر معروف لـ ${inst}: اكتب السعر.`);
+  guardJump(state, day, inst, price, input.confirm);
   const gross = units * price;
   const fee = feeOf(gross, input.fee, input.fee_pct);
   if (fee > gross) throw new OpError("الرسوم أكبر من حصيلة البيع.");
@@ -146,20 +172,22 @@ export function income(state: OpState, day: ISODate, instrument: unknown, amount
   };
 }
 
-export function setPrice(state: OpState, day: ISODate, instrument: unknown, price: unknown, source = "manual"): OpResult {
+export function setPrice(state: OpState, day: ISODate, instrument: unknown, price: unknown, source = "manual", confirmed?: unknown): OpResult {
   const inst = String(instrument ?? "").trim().toUpperCase();
   if (!/^[A-Z0-9_]{1,24}$/.test(inst)) throw new OpError("اسم الأداة مطلوب (حروف إنجليزية وأرقام).");
   const p = positive(price, "السعر");
+  guardJump(state, day, inst, p, confirmed);
   return { price: { date: day, instrument: inst, price: p, source }, message: `سعر ${inst} = ${qty.format(p)}.` };
 }
 
 /** Set the price so that units × price equals the balance the app shows. */
-export function mark(state: OpState, day: ISODate, instrument: unknown, value: unknown): OpResult {
+export function mark(state: OpState, day: ISODate, instrument: unknown, value: unknown, confirmed?: unknown): OpResult {
   const inst = instrumentOf(state, instrument);
   const v = positive(value, "القيمة");
   const units = positions(state.ledger, day).units[inst] ?? 0;
   if (units <= EPS) throw new OpError(`مفيش ${inst} مملوك في الدفتر ده بتاريخ ${day}.`);
   const price = v / units;
+  guardJump(state, day, inst, price, confirmed);
   return {
     price: { date: day, instrument: inst, price, source: `mark:${state.book}` },
     message: `تحديث ${inst}: ${qty.format(units)} × ${qty.format(price)} = ${money.format(v)} جنيه.`,

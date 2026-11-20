@@ -61,6 +61,15 @@ export const OP_TONE: Record<LedgerType, Tone | "outline"> = {
   fee: "sand",
 };
 
+/** Where a price reading came from, in words. */
+export function sourceLabel(source: string): string {
+  if (source === "trade") return "سعر عملية";
+  if (source.startsWith("mark")) return "رصيد التطبيق";
+  if (source.startsWith("accrue")) return "محاكاة عائد";
+  if (source === "manual") return "إدخال يدوي";
+  return source || "—";
+}
+
 export const REFERENCE_LABEL: Record<string, string> = {
   REF_USDEGP: "الدولار مقابل الجنيه",
   REF_XAUUSD: "أونصة الذهب عالميًا (دولار)",

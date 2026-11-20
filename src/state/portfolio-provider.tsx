@@ -38,11 +38,18 @@ interface PortfolioContextValue {
   send: (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown) => Promise<boolean>;
   toast: string | null;
   notify: (message: string) => void;
+  /** An entry the server wants confirmed (a price far from the last reading). */
+  pending: PendingConfirm | null;
+  answerPending: (accept: boolean) => void;
   /** Pulls the public reference prices now. The last outcome stays available for the prices screen. */
   pullReference: () => Promise<void>;
   pulling: boolean;
   fetchReport: FetchReport | null;
   signOut: () => Promise<void>;
+}
+
+export interface PendingConfirm {
+  message: string;
 }
 
 export interface FetchReport {
@@ -67,6 +74,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [pulling, setPulling] = useState(false);
   const [fetchReport, setFetchReport] = useState<FetchReport | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pending, setPending] = useState<PendingConfirm | null>(null);
+  const pendingResolve = useRef<((accept: boolean) => void) | null>(null);
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -144,20 +153,38 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   const setAdd = useCallback((value: number | null) => setAddState(value), []);
 
+  const answerPending = useCallback((accept: boolean) => {
+    pendingResolve.current?.(accept);
+    pendingResolve.current = null;
+    setPending(null);
+  }, []);
+
   const send = useCallback(
     async (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown) => {
       try {
-        const response = await fetch(url, {
-          method,
-          credentials: "same-origin",
-          headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        });
+        const request = (payloadBody: unknown) =>
+          fetch(url, {
+            method,
+            credentials: "same-origin",
+            headers: payloadBody === undefined ? undefined : { "Content-Type": "application/json" },
+            body: payloadBody === undefined ? undefined : JSON.stringify(payloadBody),
+          });
+        let response = await request(body);
         if (response.status === 401) {
           window.location.assign("/login");
           return false;
         }
-        const payload = await response.json().catch(() => null);
+        let payload = await response.json().catch(() => null);
+        if (response.status === 409 && payload?.confirm && body && typeof body === "object") {
+          // the server wants a second look: ask, and only then repeat the same entry with confirm set
+          const accepted = await new Promise<boolean>((resolve) => {
+            pendingResolve.current = resolve;
+            setPending({ message: payload?.error ?? "القيمة دي بعيدة عن آخر قراءة. متأكد؟" });
+          });
+          if (!accepted) return false;
+          response = await request({ ...(body as Record<string, unknown>), confirm: true });
+          payload = await response.json().catch(() => null);
+        }
         if (!response.ok) {
           notify(payload?.error ?? "العملية ما تمتش.");
           return false;
@@ -224,12 +251,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       send,
       toast,
       notify,
+      pending,
+      answerPending,
       pullReference,
       pulling,
       fetchReport,
       signOut,
     }),
-    [add, book, data, error, fetchReport, loading, mobileOpen, notify, pullReference, pulling, refresh, searchQuery, send, setAdd, setBook, sidebarCollapsed, signOut, theme, toast],
+    [add, answerPending, book, data, error, fetchReport, loading, mobileOpen, notify, pending, pullReference, pulling, refresh, searchQuery, send, setAdd, setBook, sidebarCollapsed, signOut, theme, toast],
   );
 
   return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;

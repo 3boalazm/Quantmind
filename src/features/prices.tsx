@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CircleCheck, LineChart, RefreshCw, TriangleAlert } from "lucide-react";
-import { BucketIcon, REFERENCE_LABEL } from "@/features/shared";
+import { BucketIcon, REFERENCE_LABEL, sourceLabel } from "@/features/shared";
 import { egp2, formatDate, price as formatPrice, signedPct, units as formatUnits } from "@/lib/format";
 import { BOOK_LABEL } from "@/lib/types";
 import { usePortfolio } from "@/state/portfolio-provider";
@@ -190,7 +190,7 @@ export function PricesScreen() {
                             <div>
                               <b>{config.instruments[row.instrument]?.name ?? row.instrument}</b>
                               <span>
-                                <N>{row.points}</N> قراءة
+                                <N>{row.points}</N> قراءة · {sourceLabel(row.source)}
                               </span>
                             </div>
                           </div>

@@ -14,6 +14,8 @@
  */
 
 export const EPS = 1e-9;
+/** A yearly rate from less history than this is noise. */
+export const ANNUALISE_MIN_DAYS = 90;
 
 export type ISODate = string;
 export type LedgerType = "deposit" | "withdraw" | "buy" | "sell" | "income" | "fee";
@@ -78,7 +80,11 @@ export interface Config {
   rules: {
     warn_drawdown: number;
     stop_drawdown: number;
+    /** Buckets that stay open to new money under the stop rule. Without it, `risk` flags decide. */
+    stop_buckets?: string[];
     stale_days: number;
+    /** A new price this far (as a fraction) from the previous reading must be confirmed before it is stored. */
+    max_price_jump?: number;
     min_cash_yield: number;
     review_min_days: number;
     review_benchmark_ratio: number;
@@ -420,6 +426,26 @@ export interface Transfer {
   amount: number;
 }
 
+/**
+ * Buckets whose entry rule says "not now".
+ *
+ * A bucket whose instrument carries a trend rule is closed to new money while the
+ * rule is in a downtrend, and also while there is not enough price history to
+ * evaluate it. The same states drive the alerts, so the buy list and the alerts
+ * can never disagree.
+ */
+export function blockedBuckets(config: Config, prices: PriceStore, asof: ISODate): Record<string, "trend_no_data" | "trend_below"> {
+  const out: Record<string, "trend_no_data" | "trend_below"> = {};
+  for (const [bucket, cfg] of Object.entries(config.buckets)) {
+    const rule = config.instruments[cfg.instrument]?.trend_rule;
+    if (!rule) continue;
+    const st = trendState(rule, prices, asof);
+    if (!st.ready) out[bucket] = "trend_no_data";
+    else if (st.below) out[bucket] = "trend_below";
+  }
+  return out;
+}
+
 export interface Plan {
   investable: number;
   orders: Order[];
@@ -429,6 +455,8 @@ export interface Plan {
   stage_changed: boolean;
   targets: Record<string, number>;
   stopped: boolean;
+  /** Buckets in the targets that an entry rule kept closed, sorted. */
+  blocked: string[];
 }
 
 /**
@@ -437,8 +465,18 @@ export interface Plan {
  * Buckets with a `min_order` are bought in whole lots: a monthly share smaller
  * than one lot is parked in cash, and once enough has built up there the plan
  * proposes moving a lot across.
+ *
+ * No new money goes to a bucket in `blocked` (an entry rule says wait). Under the
+ * stop rule only the buckets in `rules.stop_buckets` stay open; without that
+ * list, every bucket flagged `risk` is closed.
  */
-export function plan(config: Config, val: Valuation, investable: number, currentDrawdown = 0): Plan {
+export function plan(
+  config: Config,
+  val: Valuation,
+  investable: number,
+  currentDrawdown = 0,
+  blocked: Record<string, string> = {},
+): Plan {
   const rules = config.rules;
   const bucketCfg = config.buckets;
   const valueOf = (b: string) => val.buckets[b] ?? 0;
@@ -447,23 +485,31 @@ export function plan(config: Config, val: Valuation, investable: number, current
   const { stage, targets } = targetsFor(config, totalAfter);
   const stopped = currentDrawdown <= -rules.stop_drawdown + EPS;
   const names = Object.keys(targets);
+  const stopOpen = rules.stop_buckets;
+  const closed = (b: string): boolean => {
+    if (Object.prototype.hasOwnProperty.call(blocked, b)) return true;
+    if (!stopped) return false;
+    return stopOpen && stopOpen.length > 0 ? !stopOpen.includes(b) : Boolean(bucketCfg[b].risk);
+  };
 
   const targetValue: Record<string, number> = {};
   const deficit: Record<string, number> = {};
   for (const b of names) {
     targetValue[b] = (targets[b] / 100) * totalAfter;
-    deficit[b] = Math.max(0, targetValue[b] - valueOf(b));
-    if (stopped && bucketCfg[b].risk) deficit[b] = 0;
+    deficit[b] = closed(b) ? 0 : Math.max(0, targetValue[b] - valueOf(b));
   }
   const totalDeficit = names.reduce((a, b) => a + deficit[b], 0);
 
   const alloc: Record<string, number> = {};
   for (const b of names) alloc[b] = 0;
   if (investable > EPS) {
-    if (totalDeficit > EPS) {
+    if (totalDeficit > investable) {
       for (const b of names) alloc[b] = (investable * deficit[b]) / totalDeficit;
     } else {
-      alloc.cash = investable;
+      // With some buckets closed, the open ones can need less than there is to place:
+      // fill them to target and keep the rest in cash rather than overshooting a target.
+      for (const b of names) alloc[b] = deficit[b];
+      alloc.cash = (alloc.cash ?? 0) + (investable - totalDeficit);
     }
   }
 
@@ -490,7 +536,7 @@ export function plan(config: Config, val: Valuation, investable: number, current
   let cashExcess = valueOf("cash") + (floored.cash ?? 0) - (targetValue.cash ?? 0);
   for (const b of names) {
     const lot = bucketCfg[b].min_order ?? 0;
-    if (!lot || (stopped && bucketCfg[b].risk)) continue;
+    if (!lot || closed(b)) continue;
     const gap = targetValue[b] - valueOf(b) - floored[b];
     const lots = Math.floor(Math.min(gap, cashExcess) / lot + 1e-9);
     if (lots >= 1) {
@@ -526,6 +572,7 @@ export function plan(config: Config, val: Valuation, investable: number, current
     stage_changed: stage.name !== stageNow.name,
     targets,
     stopped,
+    blocked: names.filter((b) => Object.prototype.hasOwnProperty.call(blocked, b)).sort(),
   };
 }
 
@@ -560,6 +607,10 @@ export interface Summary {
   pnl: number;
   pnl_pct: number;
   nav: number;
+  /** Time-weighted return: what one pound that was in from day one became, deposits excluded. */
+  twr: number;
+  /** The same return as a yearly rate; null until there is enough history. */
+  annualised: number | null;
   drawdown: number;
   max_drawdown: number;
   days_running: number;
@@ -576,9 +627,10 @@ export interface Summary {
     stage: StageInfo;
     stage_changed: boolean;
     stopped: boolean;
+    blocked: string[];
   };
   alerts: Alert[];
-  review: { verdict: "early" | "increase" | "hold"; text: string };
+  review: { verdict: "early" | "on_track" | "hold"; text: string };
   macro: NonNullable<Config["macro"]>;
   history: Array<{ date: ISODate; value: number; nav: number }>;
 }
@@ -599,7 +651,7 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   const cashInst = config.buckets.cash.instrument;
   const cashYield = annualisedYield(prices.series(cashInst, asof));
   const investable = val.wallet + add;
-  const pl = plan(config, val, investable, dd.current);
+  const pl = plan(config, val, investable, dd.current, blockedBuckets(config, prices, asof));
   const { stage, targets } = targetsFor(config, val.total);
 
   const total = val.total;
@@ -618,7 +670,7 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   const alert = (level: Alert["level"], code: string, text: string) => alerts.push({ level, code, text });
 
   if (dd.current <= -rules.stop_drawdown + EPS) {
-    alert("action", "stop_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. الإضافات للأسهم والكريبتو متوقفة والخطة بتوجه للنقد والذهب بس.`);
+    alert("action", "stop_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب.`);
   } else if (dd.current <= -rules.warn_drawdown + EPS) {
     alert("warn", "warn_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.`);
   }
@@ -653,7 +705,7 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
     if (!(held || enabled)) continue;
     const st = trendState(rule, prices, asof);
     if (!st.ready) {
-      alert("info", "trend_no_data", `قاعدة متوسط ${rule.sma_days} يوم لـ ${meta.name} محتاجة ${st.need} سعر يومي، الموجود ${st.have}.`);
+      alert("info", "trend_no_data", `قاعدة متوسط ${rule.sma_days} يوم لـ ${meta.name} محتاجة ${st.need} سعر يومي، الموجود ${st.have}. الشراء مؤجل لحد ما البيانات تكمل.`);
     } else if (st.below && held) {
       alert("action", "trend_exit", `${meta.name} قفل تحت متوسط ${rule.sma_days} يوم ${rule.confirm_days} أيام ورا بعض. القاعدة: خروج.`);
     } else if (st.below) {
@@ -665,11 +717,15 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   if (daysRunning < rules.review_min_days || !bm.meaningful) {
     review = { verdict: "early", text: `لسه بدري على الحكم: ${daysRunning} يوم من ${rules.review_min_days} مطلوبين.` };
   } else if (total >= rules.review_benchmark_ratio * bm.value && dd.current > -rules.warn_drawdown) {
-    review = { verdict: "increase", text: "المحفظة ماشية مع خط الأساس أو أحسن، والهبوط تحت الحد. كمّل وزوّد لو تحب." };
+    review = {
+      verdict: "on_track",
+      text: "المحفظة ماشية مع خط الأساس أو أحسن، والهبوط تحت الحد. كمّل بنفس الخطة؛ أي زيادة في المبلغ قرار يحتاج مراجعة يدوية.",
+    };
   } else {
     review = { verdict: "hold", text: "كمّل بنفس المبلغ من غير زيادة لحد المراجعة الجاية." };
   }
 
+  const navNow = navs.length ? navs[navs.length - 1][2] : 1;
   const stageInfo = (s: Stage): StageInfo => ({ name: s.name, label: s.label, notes: s.notes ?? [] });
   return {
     asof,
@@ -679,7 +735,9 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
     contributions: val.contributions,
     pnl: total - val.contributions,
     pnl_pct: val.contributions > EPS ? total / val.contributions - 1 : 0,
-    nav: navs.length ? navs[navs.length - 1][2] : 1,
+    nav: navNow,
+    twr: navNow - 1,
+    annualised: daysRunning >= ANNUALISE_MIN_DAYS && navNow > 0 ? Math.pow(navNow, 365 / daysRunning) - 1 : null,
     drawdown: dd.current,
     max_drawdown: dd.max,
     days_running: daysRunning,
@@ -696,6 +754,7 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
       stage: stageInfo(pl.stage),
       stage_changed: pl.stage_changed,
       stopped: pl.stopped,
+      blocked: pl.blocked,
     },
     alerts,
     review,

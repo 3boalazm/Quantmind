@@ -3,7 +3,7 @@
 import { CheckCheck, ListChecks, OctagonAlert, PiggyBank } from "lucide-react";
 import { AddAmount } from "@/features/add-amount";
 import { BUCKET_TONE, BucketIcon } from "@/features/shared";
-import { egp, egp2, formatDate, pct, price as formatPrice, signedEgp, units as formatUnits } from "@/lib/format";
+import { egp, egp2, formatDate, pct, price as formatPrice, signedEgp, signedPct, units as formatUnits } from "@/lib/format";
 import { BOOK_LABEL } from "@/lib/types";
 import { usePortfolio } from "@/state/portfolio-provider";
 import { Badge, Bubble, Button, Card, CardHead, Empty, Notice, PageHead } from "@/ui";
@@ -62,8 +62,13 @@ export function PlanScreen() {
         <Card className="span-8">
           <CardHead title="أوامر الشهر" hint="نفّذها في التطبيقات، وبعدين سجّل كل واحدة هنا" />
           {s.plan.stopped ? (
-            <Notice icon={<OctagonAlert />}>قاعدة الإيقاف مفعّلة: الإضافات للأسهم والكريبتو متوقفة لحد ما الهبوط يقل.</Notice>
+            <Notice icon={<OctagonAlert />}>قاعدة الإيقاف مفعّلة: كل الإضافات متوقفة ما عدا النقد والذهب لحد ما الهبوط يقل.</Notice>
           ) : null}
+          {s.plan.blocked.map((bucket) => (
+            <Notice key={bucket} icon={<OctagonAlert />}>
+              «{config.buckets[bucket]?.label ?? bucket}» مقفولة للشراء دلوقتي حسب قاعدة الاتجاه، ونصيبها اتوزّع على باقي الأدوات. التفاصيل في التنبيهات.
+            </Notice>
+          ))}
           {s.plan.orders.length === 0 && s.plan.transfers.length === 0 ? (
             <Empty icon={<CheckCheck />} title="مفيش مبلغ للتوزيع" description="اكتب مبلغ الإضافة فوق، أو سجّل إيداع من شاشة العمليات." />
           ) : (
@@ -166,7 +171,7 @@ export function PlanScreen() {
               <b>
                 <N>{pct(config.rules.stop_drawdown, 0)}</N>
               </b>
-              <span>هبوط يوقف الإضافة للأسهم</span>
+              <span>هبوط يقفل كل شيء عدا النقد والذهب</span>
             </div>
             <div>
               <b>
@@ -209,6 +214,16 @@ export function PlanScreen() {
               <span className="amt">
                 <N>{egp2(s.total)}</N>
               </span>
+            </div>
+            <div className="stmt__row">
+              <span>العائد الزمني (من غير أثر الإيداعات)</span>
+              <span className={`amt${s.twr < -0.0005 ? " amt--neg" : ""}`}>
+                <N>{signedPct(s.twr)}</N>
+              </span>
+            </div>
+            <div className="stmt__row">
+              <span>نفس العائد كمعدل سنوي</span>
+              <span className="amt">{s.annualised === null ? <span className="amt--zero">بعد 90 يوم</span> : <N>{signedPct(s.annualised)}</N>}</span>
             </div>
             <div className="stmt__row">
               <span>خط الأساس (كل الفلوس في صندوق النقد)</span>

@@ -103,6 +103,15 @@ def main():
         expect(page.get_by_role("status")).to_contain_text("1,218.00")
         shot(page, "05-prices")
 
+        # --- a typo-sized balance is held for confirmation, and declining stores nothing
+        page.get_by_label(re.compile("القيمة الحالية لـ كلاودز")).fill("12")
+        page.locator(".jline", has_text="كلاودز").get_by_role("button", name="حدّث").click()
+        expect(page.get_by_role("alertdialog")).to_contain_text("آخر قراءة")
+        shot(page, "05b-confirm", full=False)
+        page.get_by_role("button", name="رجوع للتصحيح").click()
+        expect(page.get_by_role("alertdialog")).to_have_count(0)
+        expect(page.locator(".jline", has_text="كلاودز")).to_contain_text("1,218.00")
+
         # --- dashboard now shows the gain: 1218 + 396 (gold after 1% fee) + 400 = 2,014
         page.get_by_role("link", name="لوحة المحفظة").first.click()
         expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()

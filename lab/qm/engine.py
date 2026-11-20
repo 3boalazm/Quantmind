@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from .store import PriceStore
 
 EPS = 1e-9
+ANNUALISE_MIN_DAYS = 90  # a yearly rate from less history than this is noise
 
 
 # --------------------------------------------------------------------------
@@ -224,12 +225,38 @@ def trend_state(rule: dict, prices: PriceStore, asof: date) -> dict:
     return {"ready": True, "below": all(below), "above": not any(below)}
 
 
-def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0.0) -> dict:
+def blocked_buckets(config: dict, prices: PriceStore, asof: date) -> dict:
+    """Buckets whose entry rule says "not now": {bucket: reason}.
+
+    A bucket whose instrument carries a trend rule is closed to new money while
+    the rule is in a downtrend, and also while there is not enough price history
+    to evaluate it. The same states drive the alerts, so the buy list and the
+    alerts can never disagree. A bucket that is switched off is not in the
+    targets at all, so it never shows up here in practice.
+    """
+    out = {}
+    for bucket, cfg in config["buckets"].items():
+        rule = config["instruments"].get(cfg["instrument"], {}).get("trend_rule")
+        if not rule:
+            continue
+        st = trend_state(rule, prices, asof)
+        if not st["ready"]:
+            out[bucket] = "trend_no_data"
+        elif st["below"]:
+            out[bucket] = "trend_below"
+    return out
+
+
+def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0.0, blocked: dict | None = None) -> dict:
     """Split `investable` across buckets to move toward targets without selling anything.
 
     Buckets with a `min_order` are bought in whole lots: a monthly share smaller
     than one lot is parked in cash, and once enough has built up there the plan
     proposes moving a lot across.
+
+    No new money goes to a bucket in `blocked` (an entry rule says wait). Under
+    the stop rule only the buckets in `rules.stop_buckets` stay open; without
+    that list, every bucket flagged `risk` is closed.
     """
     rules = config["rules"]
     bucket_cfg = config["buckets"]
@@ -238,22 +265,31 @@ def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0
     stage_now, _ = targets_for(config, val["total"])
     stage, targets = targets_for(config, total_after)
     stopped = current_drawdown <= -rules["stop_drawdown"] + EPS
+    blocked = blocked or {}
+    stop_open = rules.get("stop_buckets")
+
+    def closed(b: str) -> bool:
+        if b in blocked:
+            return True
+        if not stopped:
+            return False
+        return b not in stop_open if stop_open else bool(bucket_cfg[b].get("risk"))
 
     target_value = {b: pct / 100.0 * total_after for b, pct in targets.items()}
-    deficit = {b: max(0.0, target_value[b] - values[b]) for b in targets}
-    if stopped:
-        for b in deficit:
-            if bucket_cfg[b].get("risk"):
-                deficit[b] = 0.0
+    deficit = {b: 0.0 if closed(b) else max(0.0, target_value[b] - values[b]) for b in targets}
     total_deficit = sum(deficit.values())
 
     alloc = {b: 0.0 for b in targets}
     if investable > EPS:
-        if total_deficit > EPS:
+        if total_deficit > investable:
             for b in targets:
                 alloc[b] = investable * deficit[b] / total_deficit
         else:
-            alloc["cash"] = investable
+            # With some buckets closed, the open ones can need less than there is to place:
+            # fill them to target and keep the rest in cash rather than overshooting a target.
+            for b in targets:
+                alloc[b] = deficit[b]
+            alloc["cash"] = alloc.get("cash", 0.0) + (investable - total_deficit)
 
     parked = {}
     for b in list(alloc):
@@ -272,7 +308,7 @@ def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0
     cash_excess = values["cash"] + alloc.get("cash", 0.0) - target_value.get("cash", 0.0)
     for b in targets:
         lot = bucket_cfg[b].get("min_order", 0)
-        if not lot or (stopped and bucket_cfg[b].get("risk")):
+        if not lot or closed(b):
             continue
         gap = target_value[b] - values[b] - alloc[b]
         lots = math.floor(min(gap, cash_excess) / lot + 1e-9)
@@ -312,6 +348,7 @@ def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0
         "stage_changed": stage["name"] != stage_now["name"],
         "targets": targets,
         "stopped": stopped,
+        "blocked": sorted(b for b in targets if b in blocked),
     }
 
 
@@ -329,7 +366,8 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
     cash_inst = config["buckets"]["cash"]["instrument"]
     cash_yield = annualised_yield(prices.series(cash_inst, asof))
     investable = val["wallet"] + add
-    pl = plan(config, val, investable, dd["current"])
+    blocked = blocked_buckets(config, prices, asof)
+    pl = plan(config, val, investable, dd["current"], blocked)
     stage, targets = targets_for(config, val["total"])
 
     total = val["total"]
@@ -356,7 +394,7 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
 
     if dd["current"] <= -rules["stop_drawdown"] + EPS:
         alert("action", "stop_drawdown",
-              f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. الإضافات للأسهم والكريبتو متوقفة والخطة بتوجه للنقد والذهب بس.")
+              f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب.")
     elif dd["current"] <= -rules["warn_drawdown"] + EPS:
         alert("warn", "warn_drawdown",
               f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.")
@@ -390,7 +428,7 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
         st = trend_state(rule, prices, asof)
         if not st["ready"]:
             alert("info", "trend_no_data",
-                  f"قاعدة متوسط {rule['sma_days']} يوم لـ {meta['name']} محتاجة {st['need']} سعر يومي، الموجود {st['have']}.")
+                  f"قاعدة متوسط {rule['sma_days']} يوم لـ {meta['name']} محتاجة {st['need']} سعر يومي، الموجود {st['have']}. الشراء مؤجل لحد ما البيانات تكمل.")
         elif st["below"] and held:
             alert("action", "trend_exit",
                   f"{meta['name']} قفل تحت متوسط {rule['sma_days']} يوم {rule['confirm_days']} أيام ورا بعض. القاعدة: خروج.")
@@ -401,10 +439,11 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
         review = {"verdict": "early",
                   "text": f"لسه بدري على الحكم: {days_running} يوم من {rules['review_min_days']} مطلوبين."}
     elif total >= rules["review_benchmark_ratio"] * bm["value"] and dd["current"] > -rules["warn_drawdown"]:
-        review = {"verdict": "increase", "text": "المحفظة ماشية مع خط الأساس أو أحسن، والهبوط تحت الحد. كمّل وزوّد لو تحب."}
+        review = {"verdict": "on_track", "text": "المحفظة ماشية مع خط الأساس أو أحسن، والهبوط تحت الحد. كمّل بنفس الخطة؛ أي زيادة في المبلغ قرار يحتاج مراجعة يدوية."}
     else:
         review = {"verdict": "hold", "text": "كمّل بنفس المبلغ من غير زيادة لحد المراجعة الجاية."}
 
+    nav_now = navs[-1][2] if navs else 1.0
     return {
         "asof": asof.isoformat(),
         "total": total,
@@ -413,7 +452,10 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
         "contributions": val["contributions"],
         "pnl": total - val["contributions"],
         "pnl_pct": (total / val["contributions"] - 1.0) if val["contributions"] > EPS else 0.0,
-        "nav": navs[-1][2] if navs else 1.0,
+        "nav": nav_now,
+        # time-weighted return: what one pound that was in from day one became, deposits excluded
+        "twr": nav_now - 1.0,
+        "annualised": (nav_now ** (365.0 / days_running) - 1.0) if days_running >= ANNUALISE_MIN_DAYS and nav_now > 0 else None,
         "drawdown": dd["current"],
         "max_drawdown": dd["max"],
         "days_running": days_running,
@@ -430,6 +472,7 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
             "stage": {"name": pl["stage"]["name"], "label": pl["stage"]["label"], "notes": pl["stage"].get("notes", [])},
             "stage_changed": pl["stage_changed"],
             "stopped": pl["stopped"],
+            "blocked": pl["blocked"],
         },
         "alerts": alerts,
         "review": review,

@@ -18,10 +18,10 @@ export async function POST(request: Request) {
       let result: ops.OpResult;
       switch (data.op) {
         case "set":
-          result = ops.setPrice(state, day, data.instrument, data.price);
+          result = ops.setPrice(state, day, data.instrument, data.price, "manual", data.confirm);
           break;
         case "mark":
-          result = ops.mark(state, day, data.instrument, data.value);
+          result = ops.mark(state, day, data.instrument, data.value, data.confirm);
           break;
         case "accrue":
           result = ops.accrue(state, day, data.instrument, data.rate);

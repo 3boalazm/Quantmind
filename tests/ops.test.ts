@@ -95,6 +95,38 @@ describe("write operations", () => {
   });
 });
 
+describe("price sanity check", () => {
+  const prices = [{ date: "2026-11-01", instrument: "GOLD", price: 6800 }];
+  const funded = () => {
+    let ledger = apply([], ops.deposit(state(), "2026-11-01", 10000));
+    ledger = apply(ledger, ops.buy(state(ledger, prices), "2026-11-01", { instrument: "GOLD", amount: 6800 }));
+    return ledger; // exactly 1 gram
+  };
+
+  it("holds a price far from the last reading until it is confirmed", () => {
+    const ledger = funded();
+    // 680 typed instead of 6,800
+    expect(() => ops.mark(state(ledger, prices), DAY, "GOLD", 680)).toThrow(ops.ConfirmError);
+    expect(() => ops.setPrice(state(ledger, prices), DAY, "GOLD", 68000)).toThrow(ops.ConfirmError);
+    expect(() => ops.buy(state(ledger, prices), DAY, { instrument: "GOLD", amount: 400, units: 4 })).toThrow(ops.ConfirmError);
+    expect(() => ops.sell(state(ledger, prices), DAY, { instrument: "GOLD", units: 0.5, price: 680 })).toThrow(ops.ConfirmError);
+    expect(ops.mark(state(ledger, prices), DAY, "GOLD", 680, true).price?.price).toBe(680);
+    expect(ops.setPrice(state(ledger, prices), DAY, "GOLD", 68000, "manual", true).price?.price).toBe(68000);
+  });
+
+  it("lets ordinary moves, first readings and reference series through", () => {
+    const ledger = funded();
+    expect(ops.mark(state(ledger, prices), DAY, "GOLD", 7175).price?.price).toBe(7175);
+    expect(ops.setPrice(state(ledger, prices), DAY, "INDEX", 2.07).price?.price).toBe(2.07);
+    const ref = [{ date: "2026-11-01", instrument: "REF_BTCUSD", price: 65000 }];
+    expect(ops.setPrice(state([], ref), DAY, "REF_BTCUSD", 20000).price?.price).toBe(20000);
+  });
+
+  it("a ConfirmError is still an OpError, so nothing is stored unless the caller opts in", () => {
+    expect(new ops.ConfirmError("x")).toBeInstanceOf(ops.OpError);
+  });
+});
+
 describe("session cookie", () => {
   it("round-trips, expires, and rejects tampering", async () => {
     process.env.APP_PASSWORD = "unit-test-only";
