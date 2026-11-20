@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, Check, Trash2, X } from "lucide-react";
 import { OP_LABEL, OP_TONE } from "@/features/shared";
 import type { LedgerRow } from "@/lib/engine";
@@ -28,10 +28,37 @@ const HELP: Record<Op, string> = {
   withdraw: "فلوس خرجت من المحفظة خالص. لازم تكون موجودة في الرصيد غير الموزع.",
 };
 
-function newNonce(): string {
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const NONCE_KEY = "quantmind:pending-entry";
+let memoryNonce = "";
+
+/** The nonce of the entry being submitted. Kept in sessionStorage so a reload does not lose it. */
+function pendingNonce(): string {
+  try {
+    const saved = window.sessionStorage.getItem(NONCE_KEY);
+    if (saved && /^[0-9a-f]{24}$/.test(saved)) return saved;
+  } catch {
+    // storage unavailable: fall back to memory for this page view
+  }
+  if (!memoryNonce) {
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    memoryNonce = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  try {
+    window.sessionStorage.setItem(NONCE_KEY, memoryNonce);
+  } catch {
+    // ignore
+  }
+  return memoryNonce;
+}
+
+function clearNonce(): void {
+  memoryNonce = "";
+  try {
+    window.sessionStorage.removeItem(NONCE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 /** Small stable hash of the entry's content (FNV-1a); not a secret, only a way to tell entries apart. */
@@ -61,9 +88,7 @@ export function LedgerScreen() {
   const [sellAll, setSellAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
-  // Identifies one logical entry: the same form content sent again (after a lost reply) keeps its id,
-  // so the server stores it once. A saved entry gets a fresh nonce, so an identical entry can follow.
-  const nonce = useRef<string>("");
+
 
   // "سجّل الشراء" on the dashboard and plan screens links here with the order filled in.
   useEffect(() => {
@@ -101,12 +126,13 @@ export function LedgerScreen() {
       if (feePct) body.fee_pct = feePct;
     }
     if (op === "sell") body.sell_all = sellAll;
-    if (!nonce.current) nonce.current = newNonce();
-    body.op_id = `${nonce.current}-${fingerprint(JSON.stringify(body))}`;
+    // One id per logical entry: the same content sent again after a lost reply (even after a page
+    // reload) keeps its id, so the server stores it once. Saving clears the nonce for the next entry.
+    body.op_id = `${pendingNonce()}-${fingerprint(JSON.stringify(body))}`;
     const done = await app.send("POST", "/api/ledger", body);
     setBusy(false);
     if (done) {
-      nonce.current = "";
+      clearNonce();
       setAmount("");
       setQty("");
       setUnitPrice("");

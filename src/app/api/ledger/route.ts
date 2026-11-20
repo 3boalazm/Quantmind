@@ -14,12 +14,14 @@ export async function POST(request: Request) {
     const day = dayOf(data.date);
     // The form sends one id per logical entry. If the reply was lost and the same entry comes again,
     // it is recognised here instead of being stored twice.
-    const opId = data.op_id === undefined || data.op_id === null ? null : data.op_id;
-    if (opId !== null && (typeof opId !== "string" || !/^[A-Za-z0-9:_-]{8,80}$/.test(opId))) {
-      throw new HttpError(400, "معرّف العملية غير صالح.");
+    const opId = data.op_id;
+    if (typeof opId !== "string" || !/^[A-Za-z0-9:_-]{8,80}$/.test(opId)) {
+      throw new HttpError(400, "معرّف العملية (op_id) مطلوب وغير صالح.");
     }
     const message = await withBook(book, async (q) => {
-      if (opId && (await ledgerHasOp(q, book, opId))) return "العملية دي اتسجلت قبل كده، ومااتكررتش.";
+      if (await ledgerHasOp(q, book, opId)) {
+        return "العملية دي اتسجلت قبل كده ومااتكررتش. لو دي عملية تانية فعلًا بنفس البيانات، غيّر الملاحظة وسجّلها.";
+      }
       const state = await loadState(q, book);
       let result: ops.OpResult;
       switch (data.op) {
