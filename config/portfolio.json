@@ -1,0 +1,70 @@
+{
+  "name": "QuantMind Portfolio",
+  "currency": "EGP",
+  "monthly_contribution": 2000,
+  "instruments": {
+    "CASH": {"name": "كلاودز شريعة (ثاندر)", "bucket": "cash", "unit": "جنيه"},
+    "CERT": {"name": "شهادة الخير المتغيرة (بيت التمويل الكويتي)", "bucket": "cash", "unit": "جنيه", "fixed_price": true},
+    "GOLD": {"name": "دهب ثاندر (عيار 24)", "bucket": "gold", "unit": "جرام"},
+    "INDEX": {"name": "بلتون وفرة BWA (مؤشر الشريعة EGX33)", "bucket": "index", "unit": "وثيقة"},
+    "ACTIVE": {"name": "أزيموت فرص الشريعة ASO", "bucket": "active", "unit": "وثيقة"},
+    "REALESTATE": {"name": "عقار مجزأ SAFE", "bucket": "real_estate", "unit": "حصة"},
+    "BTC": {
+      "name": "Bitcoin Spot",
+      "bucket": "crypto",
+      "unit": "BTC",
+      "trend_rule": {"series": "REF_BTCUSD", "sma_days": 200, "confirm_days": 5}
+    }
+  },
+  "buckets": {
+    "cash": {"label": "نقد شبه ثابت", "instrument": "CASH", "risk": false},
+    "gold": {"label": "ذهب", "instrument": "GOLD", "risk": false},
+    "index": {"label": "صندوق مؤشر الشريعة", "instrument": "INDEX", "risk": true},
+    "active": {"label": "صندوق أسهم نشط", "instrument": "ACTIVE", "risk": true},
+    "real_estate": {"label": "عقار مجزأ", "instrument": "REALESTATE", "risk": false, "min_order": 5000},
+    "crypto": {"label": "كريبتو Spot", "instrument": "BTC", "risk": true, "min_order": 400}
+  },
+  "stages": [
+    {
+      "name": "1",
+      "label": "البداية",
+      "min_value": 0,
+      "targets": {"cash": 60, "gold": 20, "index": 20},
+      "notes": []
+    },
+    {
+      "name": "2",
+      "label": "10,000+",
+      "min_value": 10000,
+      "targets": {"cash": 50, "gold": 20, "index": 20, "active": 10},
+      "notes": [
+        "ممكن تحويل 5,000 من النقد المتراكم لشهادة متغيرة (حد أدنى 5,000، كسر بعد 6 شهور). راجع العائد وقتها.",
+        "بدء صندوق الأسهم النشط بنسبة 10%."
+      ]
+    },
+    {
+      "name": "3",
+      "label": "25,000+",
+      "min_value": 25000,
+      "targets": {"cash": 40, "gold": 15, "index": 15, "active": 10, "real_estate": 20},
+      "notes": [
+        "العقار المجزأ بيتشترى حصص كاملة (5,000) من النقد المتراكم. افحص نشاط المستأجر شرعًا لكل عقار.",
+        "الفضة اختيارية بحد أقصى 5% بعد التأكد من التوافق الشرعي للصندوق."
+      ]
+    }
+  ],
+  "crypto": {"enabled": false, "from_value": 5000, "target_pct": 8},
+  "rules": {
+    "warn_drawdown": 0.10,
+    "stop_drawdown": 0.25,
+    "stale_days": 10,
+    "min_cash_yield": 0.15,
+    "review_min_days": 150,
+    "review_benchmark_ratio": 0.98
+  },
+  "macro": {
+    "cbe_deposit_rate": 0.20,
+    "inflation_urban": 0.127,
+    "as_of": "2026-11-20"
+  }
+}
