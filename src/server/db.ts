@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS ledger (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ledger_book_day ON ledger (book, day, id);
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS op_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS ledger_book_op ON ledger (book, op_id) WHERE op_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS prices (
   book        TEXT NOT NULL,
   instrument  TEXT NOT NULL,
@@ -162,13 +164,19 @@ export async function readLedger(q: Queryable, book: string): Promise<LedgerRow[
   }));
 }
 
-export async function insertLedger(q: Queryable, book: string, row: Omit<LedgerRow, "id">): Promise<number> {
+export async function insertLedger(q: Queryable, book: string, row: Omit<LedgerRow, "id">, opId: string | null = null): Promise<number> {
   const { rows } = await q.query<{ id: string }>(
-    `INSERT INTO ledger (book, day, type, instrument, units, price, amount, fee, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [book, row.date, row.type, row.instrument, row.units, row.price, row.amount, row.fee, row.note],
+    `INSERT INTO ledger (book, day, type, instrument, units, price, amount, fee, note, op_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [book, row.date, row.type, row.instrument, row.units, row.price, row.amount, row.fee, row.note, opId],
   );
   return Number(rows[0].id);
+}
+
+/** True when this logical operation was already stored (a retry after a lost response). */
+export async function ledgerHasOp(q: Queryable, book: string, opId: string): Promise<boolean> {
+  const { rows } = await q.query("SELECT 1 FROM ledger WHERE book = $1 AND op_id = $2 LIMIT 1", [book, opId]);
+  return rows.length > 0;
 }
 
 export async function deleteLedger(q: Queryable, book: string, id: number): Promise<void> {

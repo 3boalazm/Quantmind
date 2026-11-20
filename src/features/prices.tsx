@@ -59,7 +59,7 @@ export function PricesScreen() {
 
       <div className="bento">
         <Card className="span-7">
-          <CardHead title="أرصدة أدواتك" hint="اكتب القيمة الإجمالية الظاهرة في التطبيق، والسعر بيتحسب منها" />
+          <CardHead title="أرصدة أدواتك" hint="اكتب القيمة الإجمالية الظاهرة في التطبيق بعد ما تخلّص عمليات اليوم، والسعر بيتحسب منها" />
           {s.holdings.length === 0 ? (
             <Empty icon={<LineChart />} title="لسه مفيش أدوات مملوكة" description="بعد أول شراء هتظهر هنا علشان تحدّث قيمتها." />
           ) : (

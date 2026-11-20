@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftRight, Check, Trash2, X } from "lucide-react";
 import { OP_LABEL, OP_TONE } from "@/features/shared";
 import type { LedgerRow } from "@/lib/engine";
@@ -28,6 +28,22 @@ const HELP: Record<Op, string> = {
   withdraw: "فلوس خرجت من المحفظة خالص. لازم تكون موجودة في الرصيد غير الموزع.",
 };
 
+function newNonce(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Small stable hash of the entry's content (FNV-1a); not a secret, only a way to tell entries apart. */
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 export function LedgerScreen() {
   const app = usePortfolio();
   const data = app.data!;
@@ -45,6 +61,9 @@ export function LedgerScreen() {
   const [sellAll, setSellAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  // Identifies one logical entry: the same form content sent again (after a lost reply) keeps its id,
+  // so the server stores it once. A saved entry gets a fresh nonce, so an identical entry can follow.
+  const nonce = useRef<string>("");
 
   // "سجّل الشراء" on the dashboard and plan screens links here with the order filled in.
   useEffect(() => {
@@ -82,9 +101,12 @@ export function LedgerScreen() {
       if (feePct) body.fee_pct = feePct;
     }
     if (op === "sell") body.sell_all = sellAll;
+    if (!nonce.current) nonce.current = newNonce();
+    body.op_id = `${nonce.current}-${fingerprint(JSON.stringify(body))}`;
     const done = await app.send("POST", "/api/ledger", body);
     setBusy(false);
     if (done) {
+      nonce.current = "";
       setAmount("");
       setQty("");
       setUnitPrice("");
