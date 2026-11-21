@@ -3,53 +3,148 @@
   "currency": "EGP",
   "monthly_contribution": 2000,
   "instruments": {
-    "CASH": {"name": "كلاودز شريعة (ثاندر)", "bucket": "cash", "unit": "جنيه"},
+    "CASH": {
+      "name": "كلاودز شريعة (ثاندر)",
+      "bucket": "cash",
+      "unit": "جنيه",
+      "checks": [
+        "اسأل دعم ثاندر عن اسم بنك (أو بنوك) الوكالة، وهل هو بنك إسلامي بالكامل أم نافذة إسلامية.",
+        "اطلب آخر Fact Sheet واتأكد أن نسبة أذون الخزانة فعليًا صفر.",
+        "اتأكد إنك مختار «كلاودز شريعة» مش «الكلاود اللحظي»، وراجع العائد المعروض: لو أقل من 15% قارن بشهادة فيصل."
+      ]
+    },
     "CERT": {
       "name": "شهادة الخير المتغيرة (بيت التمويل الكويتي)",
       "bucket": "cash",
       "unit": "جنيه",
       "fixed_price": true,
-      "terms": {"min_buy": 5000, "step": 1000, "lock_days": 180}
+      "terms": {
+        "min_buy": 5000,
+        "step": 1000,
+        "lock_days": 180
+      }
     },
     "GOLD": {
       "name": "دهب ثاندر (عيار 24)",
       "bucket": "gold",
       "unit": "جرام",
-      "fees": {"buy_pct": 1.5, "sell_pct": 0},
-      "reference": "REF_GOLD24_EGP"
+      "fees": {
+        "buy_pct": 1.5,
+        "sell_pct": 0
+      },
+      "reference": "REF_GOLD24_EGP",
+      "checks": [
+        "اسأل دعم ثاندر: هل سبائك الصندوق كلها مفرزة ومخصصة بأرقام تسلسلية لصالح الصندوق لدى EGYCASH وتخضع لجرد أمين الحفظ واللجنة الشرعية؟",
+        "اسأل دعم ثاندر: بعد تنفيذ الأمر وتثبيت السعر، متى تنتقل ملكية الوثائق فعليًا: في نفس يوم التنفيذ أم بعده بيوم أو يومين؟ وهل يتاح البيع قبل إتمام الصندوق شراء الذهب وتخصيصه؟",
+        "استفتاء مفتوح: حكم شرط الـ 100 جرام للاستلام الفعلي لصغار المدخرين.",
+        "راجع الرسوم داخل التطبيق قبل أول أمر."
+      ]
     },
-    "INDEX": {"name": "بلتون وفرة BWA (مؤشر الشريعة EGX33)", "bucket": "index", "unit": "وثيقة"},
-    "ACTIVE": {"name": "أزيموت فرص الشريعة ASO", "bucket": "active", "unit": "وثيقة"},
-    "REALESTATE": {"name": "عقار مجزأ SAFE", "bucket": "real_estate", "unit": "حصة", "fees": {"buy_pct": 0, "sell_pct": 2}},
+    "INDEX": {
+      "name": "سلة الأسهم المفلترة (شراء مجمّع)",
+      "bucket": "index",
+      "unit": "جنيه",
+      "unitised": true,
+      "fees": {
+        "buy_pct": 0.28,
+        "sell_pct": 0.28
+      },
+      "checks": [
+        "السهم من قائمة الـ Screener: ضوابط أيوفي (المعيار 21) ومش سهم مصرف أبوظبي الإسلامي.",
+        "التطهير من القوائم المالية فقط: (الإيراد المحرم ÷ عدد الأسهم) × أسهمك عند نهاية الفترة المالية. لو البيانات ناقصة يتعلّم «تطهير غير متاح».",
+        "نوّع على القطاعات، وراجع رسوم الأمر داخل ثاندر (حوالي 5.5 جنيه لأمر بـ 2,000)."
+      ]
+    },
+    "ACTIVE": {
+      "name": "أزيموت فرص الشريعة ASO",
+      "bucket": "active",
+      "unit": "وثيقة"
+    },
+    "REALESTATE": {
+      "name": "عقار مجزأ SAFE",
+      "bucket": "real_estate",
+      "unit": "حصة",
+      "fees": {
+        "buy_pct": 0,
+        "sell_pct": 2
+      }
+    },
     "BTC": {
       "name": "Bitcoin Spot",
       "bucket": "crypto",
       "unit": "BTC",
       "stale_days": 10,
-      "trend_rule": {"series": "REF_BTCUSD", "sma_days": 200, "confirm_days": 5}
+      "trend_rule": {
+        "series": "REF_BTCUSD",
+        "sma_days": 200,
+        "confirm_days": 5
+      }
     }
   },
   "buckets": {
-    "cash": {"label": "نقد شبه ثابت", "instrument": "CASH", "risk": false},
-    "gold": {"label": "ذهب", "instrument": "GOLD", "risk": false},
-    "index": {"label": "صندوق مؤشر الشريعة", "instrument": "INDEX", "risk": true},
-    "active": {"label": "صندوق أسهم نشط", "instrument": "ACTIVE", "risk": true},
-    "real_estate": {"label": "عقار مجزأ", "instrument": "REALESTATE", "risk": false, "min_order": 5000},
-    "crypto": {"label": "كريبتو Spot", "instrument": "BTC", "risk": true, "min_order": 400}
+    "cash": {
+      "label": "نقد شبه ثابت",
+      "instrument": "CASH",
+      "risk": false
+    },
+    "gold": {
+      "label": "ذهب",
+      "instrument": "GOLD",
+      "risk": false
+    },
+    "index": {
+      "label": "سلة الأسهم",
+      "instrument": "INDEX",
+      "risk": true,
+      "min_order": 2000,
+      "lot_hint": "كل 2,000 جنيه = سهم واحد من قائمة الـ Screener، بتنويع على القطاعات.",
+      "gate": {
+        "closed": true,
+        "reason": "في انتظار جاهزية الـ Screener ونتيجة الاستفتاء في الأسهم المختلطة."
+      }
+    },
+    "active": {
+      "label": "صندوق أسهم نشط",
+      "instrument": "ACTIVE",
+      "risk": true
+    },
+    "real_estate": {
+      "label": "عقار مجزأ",
+      "instrument": "REALESTATE",
+      "risk": false,
+      "min_order": 5000
+    },
+    "crypto": {
+      "label": "كريبتو Spot",
+      "instrument": "BTC",
+      "risk": true,
+      "min_order": 400
+    }
   },
   "stages": [
     {
       "name": "1",
       "label": "البداية",
       "min_value": 0,
-      "targets": {"cash": 60, "gold": 20, "index": 20},
-      "notes": []
+      "targets": {
+        "cash": 60,
+        "gold": 20,
+        "index": 20
+      },
+      "notes": [
+        "قسط الأسهم بيتجمع في صندوق النقد، وبعد فتح الشريحة بيتشترى بيه سهم واحد مفلتر كل 2,000 جنيه."
+      ]
     },
     {
       "name": "2",
       "label": "10,000+",
       "min_value": 10000,
-      "targets": {"cash": 50, "gold": 20, "index": 20, "active": 10},
+      "targets": {
+        "cash": 50,
+        "gold": 20,
+        "index": 20,
+        "active": 10
+      },
       "notes": [
         "ممكن تحويل 5,000 من النقد المتراكم لشهادة متغيرة (حد أدنى 5,000، كسر بعد 6 شهور). راجع العائد وقتها.",
         "بدء صندوق الأسهم النشط بنسبة 10%."
@@ -59,18 +154,31 @@
       "name": "3",
       "label": "25,000+",
       "min_value": 25000,
-      "targets": {"cash": 40, "gold": 15, "index": 15, "active": 10, "real_estate": 20},
+      "targets": {
+        "cash": 40,
+        "gold": 15,
+        "index": 15,
+        "active": 10,
+        "real_estate": 20
+      },
       "notes": [
-        "العقار المجزأ بيتشترى حصص كاملة (5,000) من النقد المتراكم. افحص نشاط المستأجر شرعًا لكل عقار.",
+        "العقار المجزأ بيتشترى حصص كاملة (5,000) من النقد المتراكم. افحص نشاط المستأجر شرعًا لكل عقار، واسأل عن هيكل «العائد المضمون» في العقد.",
         "الفضة اختيارية بحد أقصى 5% بعد التأكد من التوافق الشرعي للصندوق."
       ]
     }
   ],
-  "crypto": {"enabled": false, "from_value": 5000, "target_pct": 8},
+  "crypto": {
+    "enabled": false,
+    "from_value": 5000,
+    "target_pct": 8
+  },
   "rules": {
-    "warn_drawdown": 0.10,
-    "stop_drawdown": 0.25,
-    "stop_buckets": ["cash", "gold"],
+    "warn_drawdown": 0.1,
+    "review_drawdown": 0.25,
+    "review_buckets": [
+      "index",
+      "active"
+    ],
     "stale_days": 35,
     "max_price_jump": 0.35,
     "min_cash_yield": 0.15,
@@ -78,7 +186,7 @@
     "review_benchmark_ratio": 0.98
   },
   "macro": {
-    "cbe_deposit_rate": 0.20,
+    "cbe_deposit_rate": 0.2,
     "inflation_urban": 0.127,
     "as_of": "2026-11-20"
   }

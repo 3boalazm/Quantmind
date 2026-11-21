@@ -80,19 +80,28 @@ def main():
             "amount": 2000.0, "fee": 0.0, "note": ""}]
     add("single deposit", config, one, [{"date": "2026-11-20", "instrument": "CASH", "price": 1.0}], date(2026, 11, 20))
 
-    # crash: risk assets lose 60% a week after the last month -> stop rule
+    # the shipped default: the stock gate is closed, so its share is reserved in cash
+    gated = copy.deepcopy(config)
+    gated["buckets"]["index"]["gate"]["closed"] = True
+    add("gated: empty +2000", gated, [], [], date(2026, 11, 20), 2000.0)
+    add("gated: single deposit", gated, one, [{"date": "2026-11-20", "instrument": "CASH", "price": 1.0}], date(2026, 11, 20))
+    for i in (0, 5, len(days) - 1):
+        add(f"gated: sim month {i} +2000", gated, ledger, price_rows, days[i], 2000.0)
+
+    # crash: risk assets lose 60% a week after the last month -> review rule, buying goes on
     crash_day = last + timedelta(days=7)
     crash = list(price_rows)
     ps = PriceStore(price_rows)
     for inst in ("INDEX", "ACTIVE", "GOLD", "REALESTATE"):
         crash.append({"date": crash_day.isoformat(), "instrument": inst, "price": ps.get(inst, last)[0] * 0.4})
-    add("crash stop rule", config, ledger, crash, crash_day, 2000.0)
+    add("crash review rule", config, ledger, crash, crash_day, 2000.0)
+    add("gated: crash review rule", gated, ledger, crash, crash_day, 2000.0)
     mild = list(price_rows)
     for inst in ("INDEX", "ACTIVE", "GOLD"):
         mild.append({"date": crash_day.isoformat(), "instrument": inst, "price": ps.get(inst, last)[0] * 0.72})
     add("mild fall warn rule", config, ledger, mild, crash_day, 2000.0)
 
-    # stage 3 under the stop rule: only cash and gold may take new money (no real-estate lot)
+    # stage 3 after a deep fall: the review fires and every bucket stays open
     big_day = date(2026, 6, 1)
     big = [
         {"date": big_day, "type": "deposit", "instrument": "", "units": 0.0, "price": 0.0, "amount": 60000.0, "fee": 0.0, "note": ""},
@@ -106,10 +115,10 @@ def main():
     add("stage 3 calm: real-estate lot bought", config, big, big_px, big_day + timedelta(days=30), 12000.0)
     fall_day = big_day + timedelta(days=60)
     big_fall = big_px + [{"date": fall_day.isoformat(), "instrument": i, "price": 0.2} for i in ("INDEX", "ACTIVE")]
-    add("stage 3 stop rule: cash and gold only", config, big, big_fall, fall_day, 12000.0)
+    add("stage 3 review rule: buying goes on", config, big, big_fall, fall_day, 12000.0)
     no_list = copy.deepcopy(config)
-    del no_list["rules"]["stop_buckets"]
-    add("stage 3 stop rule, no bucket list (risk flags)", no_list, big, big_fall, fall_day, 12000.0)
+    del no_list["rules"]["review_buckets"]
+    add("stage 3 deep fall, no review buckets", no_list, big, big_fall, fall_day, 12000.0)
 
     # crypto on, with a made-up BTC series
     cfg = copy.deepcopy(config)

@@ -8,6 +8,7 @@ purchases, income, alerts, the report), not to forecast anything.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -45,6 +46,13 @@ def add_months(d: date, n: int) -> date:
 def main(out_dir: str) -> None:
     root = tempfile.mkdtemp(prefix="qm-sim-")
     shutil.copytree(os.path.join(HERE, "config"), os.path.join(root, "config"))
+    # the dry run is about the mechanics, so it runs with the stock gate open
+    path = os.path.join(root, "config", "portfolio.json")
+    with open(path, encoding="utf-8") as f:
+        sim_config = json.load(f)
+    sim_config["buckets"]["index"]["gate"]["closed"] = False
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(sim_config, f, ensure_ascii=False, indent=2)
     ws = Workspace(root, "sim")
 
     def run(day: date, *args) -> None:

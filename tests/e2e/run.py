@@ -55,20 +55,21 @@ def main():
         expect(page.get_by_role("status")).to_contain_text("إيداع")
         expect(page.locator("table tbody tr")).to_have_count(1)
 
-        # --- the plan splits it 60/20/20
+        # --- the plan: 60% cash and 20% gold, and the 20% stock share waits in cash behind its gate
         page.get_by_role("link", name="خطة الشراء").first.click()
         expect(page.get_by_role("heading", name="خطة الشراء", level=1)).to_be_visible()
         rows = page.locator(".list__row")
-        expect(rows).to_have_count(3)
-        expect(rows.nth(0)).to_contain_text("1,200")
+        expect(rows).to_have_count(2)
+        expect(rows.nth(0)).to_contain_text("1,600")
         expect(rows.nth(1)).to_contain_text("400")
-        expect(rows.nth(2)).to_contain_text("400")
+        expect(page.get_by_role("note").filter(has_text="مقفولة للشراء")).to_contain_text("400")
+        expect(page.get_by_role("note").filter(has_text="قبل أول شراء")).to_have_count(2)
         shot(page, "03-plan")
 
-        # --- record the three buys through the pre-filled form
-        prices = {"CASH": None, "GOLD": "6765", "INDEX": "2.07"}
+        # --- record the two buys through the pre-filled form
+        prices = {"CASH": None, "GOLD": "6765"}
         links = [a.get_attribute("href") for a in page.get_by_role("link", name="سجّل الشراء").all()]
-        assert len(links) == 3, links
+        assert len(links) == 2, links
         for href in links:
             page.goto(BASE + href)
             expect(page.get_by_role("tab", name="شراء")).to_have_attribute("aria-selected", "true")
@@ -83,7 +84,7 @@ def main():
                 expect(page.get_by_role("alertdialog")).to_contain_text("أول سعر")
                 page.get_by_role("button", name="الرقم صح، احفظ").click()
             expect(page.get_by_role("status")).to_contain_text("شراء")
-        expect(page.locator("table tbody tr")).to_have_count(4)
+        expect(page.locator("table tbody tr")).to_have_count(3)
         shot(page, "04-ledger")
 
         # --- overspending is refused
@@ -91,42 +92,42 @@ def main():
         page.get_by_label("المبلغ بالجنيه").fill("500")
         page.get_by_role("button", name="تسجيل شراء").click()
         expect(page.get_by_role("status")).to_contain_text("الرصيد غير الموزع")
-        expect(page.locator("table tbody tr")).to_have_count(4)
+        expect(page.locator("table tbody tr")).to_have_count(3)
 
         # --- deleting the deposit is refused while buys depend on it
         last_row = page.locator("table tbody tr").last
         last_row.get_by_role("button", name="حذف العملية").click()
         last_row.get_by_role("button", name="تأكيد الحذف").click()
         expect(page.get_by_role("status")).to_contain_text("مينفعش تتحذف")
-        expect(page.locator("table tbody tr")).to_have_count(4)
+        expect(page.locator("table tbody tr")).to_have_count(3)
 
         # --- mark the cash fund's balance up, as the broker app would show it
         page.get_by_role("link", name="الأسعار والأرصدة").first.click()
         expect(page.get_by_role("heading", name="الأسعار والأرصدة", level=1)).to_be_visible()
-        page.get_by_label(re.compile("القيمة الحالية لـ كلاودز")).fill("1218")
+        page.get_by_label(re.compile("القيمة الحالية لـ كلاودز")).fill("1624")
         page.locator(".jline", has_text="كلاودز").get_by_role("button", name="حدّث").click()
-        expect(page.get_by_role("status")).to_contain_text("1,218.00")
+        expect(page.get_by_role("status")).to_contain_text("1,624.00")
         shot(page, "05-prices")
 
         # --- a typo-sized balance is held for confirmation, and declining stores nothing
-        page.get_by_label(re.compile("القيمة الحالية لـ كلاودز")).fill("12")
+        page.get_by_label(re.compile("القيمة الحالية لـ كلاودز")).fill("16")
         page.locator(".jline", has_text="كلاودز").get_by_role("button", name="حدّث").click()
         expect(page.get_by_role("alertdialog")).to_contain_text("آخر قراءة")
         shot(page, "05b-confirm", full=False)
         page.get_by_role("button", name="رجوع للتصحيح").click()
         expect(page.get_by_role("alertdialog")).to_have_count(0)
-        expect(page.locator(".jline", has_text="كلاودز")).to_contain_text("1,218.00")
+        expect(page.locator(".jline", has_text="كلاودز")).to_contain_text("1,624.00")
 
-        # --- dashboard now shows the gain: 1218 + 396 (gold after 1% fee) + 400 = 2,014
+        # --- dashboard now shows the gain: 1624 + 396 (gold after 1% fee) = 2,020
         page.get_by_role("link", name="لوحة المحفظة").first.click()
         expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()
-        expect(page.locator(".stat-card").nth(0)).to_contain_text("2,014")
-        expect(page.locator(".stat-card").nth(1)).to_contain_text("+14")
+        expect(page.locator(".stat-card").nth(0)).to_contain_text("2,020")
+        expect(page.locator(".stat-card").nth(1)).to_contain_text("+20")
         shot(page, "06-dashboard")
 
-        # --- next month's plan appears when cash is not waiting
+        # --- next month's plan appears when cash is not waiting (cash and gold; stocks still gated)
         expect(page.get_by_label("مبلغ الإضافة بالجنيه")).to_have_value("2000")
-        expect(page.locator(".span-7 .list__row")).to_have_count(3)
+        expect(page.locator(".span-7 .list__row")).to_have_count(2)
 
         # --- settings: change the monthly amount, turn crypto on and off again
         page.get_by_role("link", name="الإعدادات").first.click()
@@ -147,7 +148,7 @@ def main():
         page.get_by_role("link", name="لوحة المحفظة").first.click()
         expect(page.get_by_text("ابدأ بتسجيل أول إيداع")).to_be_visible()
         page.get_by_label("الدفتر").select_option("paper")
-        expect(page.locator(".stat-card").nth(0)).to_contain_text("2,014")
+        expect(page.locator(".stat-card").nth(0)).to_contain_text("2,020")
 
         # --- collapsed rail, dark theme
         page.get_by_role("button", name="طي القائمة").click()

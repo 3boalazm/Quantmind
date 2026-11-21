@@ -60,6 +60,10 @@ export interface Instrument {
   reference?: string;
   /** Product terms: smallest first purchase, top-up multiple, and days before it can be redeemed. */
   terms?: { min_buy?: number; step?: number; lock_days?: number };
+  /** Tracked by value, like a fund: the first purchase starts at one unit per pound and balances are marked. */
+  unitised?: boolean;
+  /** Things to settle before the first purchase; shown beside the order until the instrument is held. */
+  checks?: string[];
 }
 
 export interface Bucket {
@@ -67,6 +71,10 @@ export interface Bucket {
   instrument: string;
   risk: boolean;
   min_order?: number;
+  /** What one lot stands for, shown with the lot transfer. */
+  lot_hint?: string;
+  /** Closed while a decision outside the app is pending; the bucket's share waits in cash. */
+  gate?: { closed: boolean; reason?: string };
 }
 
 export interface Stage {
@@ -87,9 +95,10 @@ export interface Config {
   crypto?: { enabled: boolean; from_value: number; target_pct: number };
   rules: {
     warn_drawdown: number;
-    stop_drawdown: number;
-    /** Buckets that stay open to new money under the stop rule. Without it, `risk` flags decide. */
-    stop_buckets?: string[];
+    /** A fall this deep in the review buckets asks for a check of the system and of each holding. Buying goes on. */
+    review_drawdown: number;
+    /** The buckets that make up the equity sleeve the review rule watches. */
+    review_buckets?: string[];
     stale_days: number;
     /** A new price this far (as a fraction) from the previous reading must be confirmed before it is stored. */
     max_price_jump?: number;
@@ -441,10 +450,20 @@ export interface Transfer {
  * rule is in a downtrend, and also while there is not enough price history to
  * evaluate it. The same states drive the alerts, so the buy list and the alerts
  * can never disagree.
+ *
+ * A bucket with a closed `gate` waits on a decision made outside the app (a
+ * ruling, a tool that is not built yet): its share stays in cash until the gate
+ * is opened in the config.
  */
-export function blockedBuckets(config: Config, prices: PriceStore, asof: ISODate): Record<string, "trend_no_data" | "trend_below"> {
-  const out: Record<string, "trend_no_data" | "trend_below"> = {};
+export type BlockReason = "gated" | "trend_no_data" | "trend_below";
+
+export function blockedBuckets(config: Config, prices: PriceStore, asof: ISODate): Record<string, BlockReason> {
+  const out: Record<string, BlockReason> = {};
   for (const [bucket, cfg] of Object.entries(config.buckets)) {
+    if (cfg.gate?.closed) {
+      out[bucket] = "gated";
+      continue;
+    }
     const rule = config.instruments[cfg.instrument]?.trend_rule;
     if (!rule) continue;
     const st = trendState(rule, prices, asof);
@@ -462,9 +481,10 @@ export interface Plan {
   stage: Stage;
   stage_changed: boolean;
   targets: Record<string, number>;
-  stopped: boolean;
-  /** Buckets in the targets that an entry rule kept closed, sorted. */
+  /** Buckets in the targets that an entry rule or a closed gate kept closed, sorted. */
   blocked: string[];
+  /** What each gated bucket is owed once these orders are placed; it sits in cash until the gate opens. */
+  reserved: Record<string, number>;
 }
 
 /**
@@ -474,31 +494,18 @@ export interface Plan {
  * than one lot is parked in cash, and once enough has built up there the plan
  * proposes moving a lot across.
  *
- * No new money goes to a bucket in `blocked` (an entry rule says wait). Under the
- * stop rule only the buckets in `rules.stop_buckets` stay open; without that
- * list, every bucket flagged `risk` is closed.
+ * No new money goes to a bucket in `blocked` (an entry rule or a closed gate says
+ * wait). Nothing else closes a bucket: a fall in the portfolio never stops the
+ * monthly buying, it only raises a review (see `summary`).
  */
-export function plan(
-  config: Config,
-  val: Valuation,
-  investable: number,
-  currentDrawdown = 0,
-  blocked: Record<string, string> = {},
-): Plan {
-  const rules = config.rules;
+export function plan(config: Config, val: Valuation, investable: number, blocked: Record<string, string> = {}): Plan {
   const bucketCfg = config.buckets;
   const valueOf = (b: string) => val.buckets[b] ?? 0;
   const totalAfter = val.invested + investable;
   const stageNow = targetsFor(config, val.total).stage;
   const { stage, targets } = targetsFor(config, totalAfter);
-  const stopped = currentDrawdown <= -rules.stop_drawdown + EPS;
   const names = Object.keys(targets);
-  const stopOpen = rules.stop_buckets;
-  const closed = (b: string): boolean => {
-    if (Object.prototype.hasOwnProperty.call(blocked, b)) return true;
-    if (!stopped) return false;
-    return stopOpen && stopOpen.length > 0 ? !stopOpen.includes(b) : Boolean(bucketCfg[b].risk);
-  };
+  const closed = (b: string): boolean => Object.prototype.hasOwnProperty.call(blocked, b);
 
   const targetValue: Record<string, number> = {};
   const deficit: Record<string, number> = {};
@@ -571,6 +578,10 @@ export function plan(
 
   const parkedRounded: Record<string, number> = {};
   for (const [b, v] of Object.entries(parked)) parkedRounded[b] = Math.round(v * 100) / 100;
+  const reserved: Record<string, number> = {};
+  for (const b of [...names].sort()) {
+    if (blocked[b] === "gated") reserved[b] = Math.round(Math.max(0, targetValue[b] - valueOf(b)) * 100) / 100;
+  }
   return {
     investable,
     orders,
@@ -579,9 +590,35 @@ export function plan(
     stage,
     stage_changed: stage.name !== stageNow.name,
     targets,
-    stopped,
     blocked: names.filter((b) => Object.prototype.hasOwnProperty.call(blocked, b)).sort(),
+    reserved,
   };
+}
+
+/**
+ * How far the holdings in `rules.review_buckets` sit below their own highs (0 or negative).
+ *
+ * Each holding is compared with its highest recorded price since it was first
+ * bought, weighted by the units held now, so new purchases do not hide a fall.
+ */
+export function sleeveDrawdown(config: Config, ledger: LedgerRow[], pos: Positions, prices: PriceStore, asof: ISODate): number {
+  const buckets = new Set(config.rules.review_buckets ?? []);
+  let now = 0;
+  let top = 0;
+  for (const inst of Object.keys(pos.units).sort()) {
+    if (!buckets.has(config.instruments[inst].bucket)) continue;
+    const u = pos.units[inst];
+    let first: ISODate | null = null;
+    for (const r of ledger) {
+      if (r.type === "buy" && r.instrument === inst && r.date <= asof && (first === null || r.date < first)) first = r.date;
+    }
+    const current = priceOf(inst, pos, prices, asof)[0];
+    let peak = current;
+    for (const [d, p] of prices.series(inst, asof)) if (first !== null && d >= first && p > peak) peak = p;
+    now += u * current;
+    top += u * peak;
+  }
+  return top > EPS ? now / top - 1 : 0;
 }
 
 /* ---------- everything the screens need ---------- */
@@ -621,6 +658,10 @@ export interface Summary {
   annualised: number | null;
   drawdown: number;
   max_drawdown: number;
+  /** Fall of the equity sleeve from its holdings' own highs; drives the diagnostic review. */
+  equity_drawdown: number;
+  /** What each gated bucket is owed today; `plan.reserved` is the same figure after this month's orders. */
+  reserved: Record<string, number>;
   days_running: number;
   benchmark: { value: number; diff: number; meaningful: boolean };
   cash_yield: number | null;
@@ -634,8 +675,8 @@ export interface Summary {
     transfers: Transfer[];
     stage: StageInfo;
     stage_changed: boolean;
-    stopped: boolean;
     blocked: string[];
+    reserved: Record<string, number>;
   };
   alerts: Alert[];
   review: { verdict: "early" | "on_track" | "hold"; text: string };
@@ -659,7 +700,9 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   const cashInst = config.buckets.cash.instrument;
   const cashYield = annualisedYield(prices.series(cashInst, asof));
   const investable = val.wallet + add;
-  const pl = plan(config, val, investable, dd.current, blockedBuckets(config, prices, asof));
+  const blocked = blockedBuckets(config, prices, asof);
+  const pl = plan(config, val, investable, blocked);
+  const equityDd = sleeveDrawdown(config, ledger, pos, prices, asof);
   const { stage, targets } = targetsFor(config, val.total);
 
   const total = val.total;
@@ -677,9 +720,10 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   const alerts: Alert[] = [];
   const alert = (level: Alert["level"], code: string, text: string) => alerts.push({ level, code, text });
 
-  if (dd.current <= -rules.stop_drawdown + EPS) {
-    alert("action", "stop_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب. القاعدة بتوقف الشراء بس ومش بتبيع حاجة.`);
-  } else if (dd.current <= -rules.warn_drawdown + EPS) {
+  if (equityDd <= -rules.review_drawdown + EPS) {
+    alert("action", "equity_review", `شريحة الأسهم نازلة ${pct1(Math.abs(equityDd))} من أعلى سعر. الإيداع الشهري مستمر. قبل الشراء الجاي راجع: مخرجات السيستم، توافق كل سهم مع الضوابط، وحالة كل شركة.`);
+  }
+  if (dd.current <= -rules.warn_drawdown + EPS) {
     alert("warn", "warn_drawdown", `المحفظة نازلة ${pct1(Math.abs(dd.current))} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.`);
   }
   for (const h of val.holdings) {
@@ -699,6 +743,15 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
   }
   if (pl.stage_changed) {
     alert("info", "stage_change", `بعد الإضافة دي المحفظة هتدخل مرحلة ${pl.stage.label}، والتوزيع المستهدف هيتغير.`);
+  }
+  // what each gated bucket is owed today (the plan's own figure is after this month's orders)
+  const reserved: Record<string, number> = {};
+  for (const b of Object.keys(targets).sort()) {
+    if (blocked[b] === "gated") reserved[b] = Math.round(Math.max(0, (targets[b] / 100) * total - (val.buckets[b] ?? 0)) * 100) / 100;
+  }
+  for (const [b, amount] of Object.entries(reserved)) {
+    const reason = config.buckets[b].gate?.reason ?? "في انتظار قرار";
+    alert("info", "gated", `«${config.buckets[b].label}» مقفولة للشراء: ${reason} نصيبها محجوز في النقد: ${money0(amount)} جنيه لحد دلوقتي.`);
   }
   const macro = config.macro ?? {};
   if (macro.as_of) {
@@ -748,6 +801,8 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
     annualised: daysRunning >= ANNUALISE_MIN_DAYS && navNow > 0 ? Math.pow(navNow, 365 / daysRunning) - 1 : null,
     drawdown: dd.current,
     max_drawdown: dd.max,
+    equity_drawdown: equityDd,
+    reserved,
     days_running: daysRunning,
     benchmark: { value: bm.value, diff: total - bm.value, meaningful: bm.meaningful },
     cash_yield: cashYield,
@@ -761,8 +816,8 @@ export function summary(config: Config, ledger: LedgerRow[], prices: PriceStore,
       transfers: pl.transfers,
       stage: stageInfo(pl.stage),
       stage_changed: pl.stage_changed,
-      stopped: pl.stopped,
       blocked: pl.blocked,
+      reserved: pl.reserved,
     },
     alerts,
     review,

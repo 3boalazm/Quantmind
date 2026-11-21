@@ -7,6 +7,12 @@ import { PriceStore, summary, type Config, type LedgerRow, type PriceRow } from 
 import * as ops from "../src/lib/ops";
 
 const base = config as unknown as Config;
+/** The config with the stock gate open, as it will be once the screener and the ruling are in. */
+const opened = (): Config => {
+  const cfg = structuredClone(base);
+  cfg.buckets.index.gate = { closed: false };
+  return cfg;
+};
 const DAY = "2026-11-20";
 const row = (date: string, type: LedgerRow["type"], instrument = "", units = 0, price = 0, amount = 0): LedgerRow => ({
   date,
@@ -30,7 +36,7 @@ function btcSeries(up: boolean): PriceRow[] {
 
 describe("audit regressions", () => {
   it("no bitcoin order while the alert says entry is deferred", () => {
-    const cfg = structuredClone(base);
+    const cfg = opened();
     cfg.crypto!.enabled = true;
     const ledger = [row(DAY, "deposit", "", 0, 0, 5000), row(DAY, "buy", "CASH", 5000, 1, 5000)];
     const prices = [{ date: DAY, instrument: "CASH", price: 1 }, ...btcSeries(false)];
@@ -45,7 +51,7 @@ describe("audit regressions", () => {
     expect(up.plan.orders.some((o) => o.bucket === "crypto") || up.plan.transfers.some((t) => t.to_bucket === "crypto")).toBe(true);
   });
 
-  it("under the stop rule no real-estate share is proposed at stage three", () => {
+  it("a deep fall in the equity sleeve raises a review and closes no bucket", () => {
     const d0 = "2026-06-01";
     const ledger = [
       row(d0, "deposit", "", 0, 0, 60000),
@@ -62,12 +68,45 @@ describe("audit regressions", () => {
       { date: "2026-07-31", instrument: "INDEX", price: 0.2 },
       { date: "2026-07-31", instrument: "ACTIVE", price: 0.2 },
     ];
-    const s = summary(base, ledger, new PriceStore(prices), "2026-07-31", 12000);
-    expect(s.plan.stopped).toBe(true);
+    const s = summary(opened(), ledger, new PriceStore(prices), "2026-07-31", 12000);
+    expect(s.equity_drawdown).toBeCloseTo(-0.9, 12);
+    expect(s.alerts[0].code).toBe("equity_review");
+    expect("stopped" in s.plan).toBe(false);
     expect(s.stage.name).toBe("3");
-    expect(new Set(s.plan.orders.map((o) => o.bucket))).toEqual(new Set(["cash", "gold"]));
-    expect(s.plan.transfers).toEqual([]);
+    const bought = new Set(s.plan.orders.map((o) => o.bucket));
+    for (const bucket of ["index", "active", "real_estate"]) expect(bought.has(bucket)).toBe(true);
     expect(s.plan.orders.reduce((sum, o) => sum + o.amount, 0)).toBe(12000);
+  });
+
+  it("while the stock gate is closed its share stays in cash and is reported as reserved", () => {
+    const ledger = [row(DAY, "deposit", "", 0, 0, 2000)];
+    const s = summary(base, ledger, new PriceStore(), DAY);
+    expect(Object.fromEntries(s.plan.orders.map((o) => [o.bucket, o.amount]))).toEqual({ cash: 1600, gold: 400 });
+    expect(s.plan.blocked).toEqual(["index"]);
+    expect(s.plan.reserved).toEqual({ index: 400 });
+    expect(s.alerts.map((a) => a.code)).toContain("gated");
+    // five months later, with the gate open, one 2,000 lot is proposed out of the cash that built up
+    const later = [row(DAY, "deposit", "", 0, 0, 10000), row(DAY, "buy", "CASH", 8000, 1, 8000), row(DAY, "buy", "GOLD", 2000 / 6500, 6500, 2000)];
+    const px = [
+      { date: DAY, instrument: "CASH", price: 1 },
+      { date: DAY, instrument: "GOLD", price: 6500 },
+    ];
+    expect(summary(base, later, new PriceStore(px), DAY).plan.transfers).toEqual([]);
+    expect(summary(opened(), later, new PriceStore(px), DAY).plan.transfers.map((t) => [t.to, t.amount])).toEqual([["INDEX", 2000]]);
+  });
+
+  it("a purchase into a gated bucket is held for confirmation", () => {
+    const ledger = [row(DAY, "deposit", "", 0, 0, 5000)];
+    const state: ops.OpState = { config: base, ledger, prices: new PriceStore(), book: "paper" };
+    expect(() => ops.buy(state, DAY, { instrument: "INDEX", amount: 2000 })).toThrow(ops.ConfirmError);
+    expect(() => ops.buy(state, DAY, { instrument: "INDEX", amount: 2000 })).toThrow(/مقفولة للشراء/);
+    // confirmed, the basket is tracked by value: one unit per pound net of the fee
+    const bought = ops.buy(state, DAY, { instrument: "INDEX", amount: 2000, fee: 5.5, confirm: true });
+    expect(bought.ledger?.price).toBe(1);
+    expect(bought.ledger?.units).toBeCloseTo(1994.5, 9);
+    // with the gate open there is nothing to confirm
+    const open: ops.OpState = { ...state, config: opened() };
+    expect(ops.buy(open, DAY, { instrument: "INDEX", amount: 2000 }).ledger?.units).toBe(2000);
   });
 
   it("a price far from the last reading is refused until confirmed", () => {

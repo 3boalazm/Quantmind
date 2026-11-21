@@ -51,7 +51,7 @@ def _fee(base: float, fee, fee_pct) -> float:
 def init(store, day: date) -> str:
     prices = store.prices()
     for inst, meta in store.config()["instruments"].items():
-        if meta["bucket"] == "cash" and prices.get(inst, day)[0] is None:
+        if (meta["bucket"] == "cash" or meta.get("unitised")) and prices.get(inst, day)[0] is None:
             store.append_price(day, inst, 1.0, "init")
     return f"ready (book: {store.book})"
 
