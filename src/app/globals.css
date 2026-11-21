@@ -1510,6 +1510,21 @@ html[lang="ar"] .hero__title {
   height: 16px;
   flex: none;
 }
+.notice--block {
+  align-items: flex-start;
+  border-radius: var(--r-md);
+  padding: 14px 18px;
+  line-height: 1.7;
+}
+.notice--block svg {
+  margin-block-start: 3px;
+}
+.checks {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 4px;
+}
 .toast {
   position: fixed;
   inset-block-end: 28px;

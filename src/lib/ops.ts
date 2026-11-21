@@ -88,7 +88,7 @@ function priceWarning(state: OpState, day: ISODate, inst: string, price: number)
       return Math.abs(change) > limit ? `أول سعر لـ ${name} هو ${qty.format(price)}، وده ${pct(change)} عن السعر المرجعي (${qty.format(ref)}).` : null;
     }
   }
-  if ((meta?.bucket === "cash" || meta?.fixed_price) && Math.abs(price - 1) < 1e-9) return null;
+  if ((meta?.bucket === "cash" || meta?.fixed_price || meta?.unitised) && Math.abs(price - 1) < 1e-9) return null;
   return `ده أول سعر يتسجل لـ ${name}: ${qty.format(price)} ${meta?.unit ? `لكل ${meta.unit}` : "للوحدة"}.`;
 }
 
@@ -106,6 +106,14 @@ function buyTermsWarning(state: OpState, day: ISODate, inst: string, amount: num
     if (remainder > 1e-6) return `${meta.name} بتزيد بمضاعفات ${money.format(terms.step)} جنيه حسب شروطها.`;
   }
   return null;
+}
+
+/** A purchase into a bucket whose gate is closed: the plan would not have proposed it. */
+function gateWarning(state: OpState, inst: string): string | null {
+  const meta = state.config.instruments[inst];
+  const bucket = state.config.buckets[meta.bucket];
+  if (!bucket?.gate?.closed) return null;
+  return `«${bucket.label}» مقفولة للشراء حاليًا: ${bucket.gate.reason ?? "في انتظار قرار"}`;
 }
 
 /** Units bought at least `lock_days` ago, less everything already sold (oldest first). */
@@ -181,15 +189,19 @@ export function buy(state: OpState, day: ISODate, input: TradeInput): OpResult {
       price = positive(input.price, "السعر");
     } else {
       const known = state.prices.get(inst, day)[0];
-      // a cash-like fund is tracked as "1 unit = 1 pound put in", so it can start at 1
-      const fallback = state.config.instruments[inst].bucket === "cash" ? 1 : null;
+      // a cash-like fund or a basket tracked by value is "1 unit = 1 pound put in", so it can start at 1
+      const meta = state.config.instruments[inst];
+      const fallback = meta.bucket === "cash" || meta.unitised ? 1 : null;
       const p = known ?? fallback;
       if (!p) throw new OpError(`مفيش سعر معروف لـ ${inst}: اكتب السعر أو الكمية اللي استلمتها.`);
       price = p;
     }
     units = net / price;
   }
-  confirmOrThrow([priceWarning(state, day, inst, price), buyTermsWarning(state, day, inst, amount)], flag(input.confirm, "confirm"));
+  confirmOrThrow(
+    [gateWarning(state, inst), priceWarning(state, day, inst, price), buyTermsWarning(state, day, inst, amount)],
+    flag(input.confirm, "confirm"),
+  );
   return {
     ledger: { date: day, type: "buy", instrument: inst, units, price, amount, fee, note: note(input.note) },
     price: { date: day, instrument: inst, price, source: "trade" },

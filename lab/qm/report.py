@@ -128,8 +128,9 @@ def render_html(s: dict, book: str, title: str = "تقرير المحفظة", ba
         extra.append(f"نصيب «{label}» الشهر ده ({_money(amount)} جنيه) اتحط في النقد لحد ما يكمّل أقل مبلغ شراء.")
     for t in p["transfers"]:
         extra.append(f"تحويل مقترح: {_money(t['amount'])} جنيه من النقد إلى «{t['to_name']}».")
-    if p["stopped"]:
-        extra.append("قاعدة حد الخسارة مفعّلة: مفيش إضافات للأسهم أو الكريبتو.")
+    for b, amount in p["reserved"].items():
+        label = next((a["label"] for a in s["allocation"] if a["bucket"] == b), b)
+        extra.append(f"«{label}» مقفولة للشراء حاليًا، ونصيبها متجمع في النقد: {_money(amount)} جنيه بعد أوامر الشهر ده.")
     if p["stage_changed"]:
         extra.extend(p["stage"]["notes"])
     if extra:

@@ -18,6 +18,13 @@ def cfg(**over):
     return c
 
 
+def open_cfg(**over):
+    """The config with the stock gate open, as it will be once the screener and the ruling are in."""
+    c = cfg(**over)
+    c["buckets"]["index"]["gate"]["closed"] = False
+    return c
+
+
 def row(d, kind, inst="", units=0.0, price=0.0, amount=0.0, fee=0.0):
     return {"date": d, "type": kind, "instrument": inst, "units": units, "price": price,
             "amount": amount, "fee": fee, "note": ""}
@@ -39,12 +46,35 @@ def btc_series(up, days=210):
 
 
 class PlanTests(unittest.TestCase):
-    def test_first_deposit_splits_60_20_20(self):
+    def test_first_deposit_keeps_the_stock_share_in_cash_while_the_gate_is_closed(self):
         c = cfg()
         ledger = [row(D0, "deposit", amount=2000)]
         s = engine.summary(c, ledger, store(), D0)
         got = {o["bucket"]: o["amount"] for o in s["plan"]["orders"]}
-        self.assertEqual(got, {"cash": 1200, "gold": 400, "index": 400})
+        self.assertEqual(got, {"cash": 1600, "gold": 400})
+        self.assertEqual(s["plan"]["blocked"], ["index"])
+        self.assertEqual(s["plan"]["reserved"], {"index": 400.0})
+        self.assertEqual(s["plan"]["transfers"], [])
+        self.assertIn("gated", [a["code"] for a in s["alerts"]])
+
+    def test_open_gate_parks_the_stock_share_until_one_lot_has_built_up(self):
+        c = open_cfg()
+        s = engine.summary(c, [row(D0, "deposit", amount=2000)], store(), D0)
+        got = {o["bucket"]: o["amount"] for o in s["plan"]["orders"]}
+        self.assertEqual(got, {"cash": 1600, "gold": 400})
+        self.assertEqual(s["plan"]["parked"], {"index": 400.0})
+        self.assertEqual(s["plan"]["reserved"], {})
+        self.assertNotIn("gated", [a["code"] for a in s["alerts"]])
+
+        # five months of the share have built up in cash: one 2,000 lot moves across
+        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0))
+        ledger = [row(D0, "deposit", amount=10000), buy(D0, "CASH", 8000, 1.0), buy(D0, "GOLD", 2000, 6500.0)]
+        p = engine.summary(c, ledger, prices, D0)["plan"]
+        self.assertEqual([(t["to"], t["amount"]) for t in p["transfers"]], [("INDEX", 2000.0)])
+        # the same position with the gate closed proposes nothing and reports what is owed
+        gated = engine.summary(cfg(), ledger, prices, D0)["plan"]
+        self.assertEqual(gated["transfers"], [])
+        self.assertEqual(gated["reserved"], {"index": 2000.0})
 
     def test_orders_always_sum_to_investable_and_never_sell(self):
         c = cfg()
@@ -90,7 +120,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual([(t["to"], t["amount"]) for t in p2["transfers"]], [("REALESTATE", 5000.0)])
 
     def test_crypto_respects_minimum_order(self):
-        c = cfg()
+        c = open_cfg()
         c["crypto"]["enabled"] = True
         prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), *btc_series(up=True))
         ledger = [row(D0, "deposit", amount=5000), buy(D0, "CASH", 3000, 1.0),
@@ -106,7 +136,7 @@ class PlanTests(unittest.TestCase):
 
 
     def _crypto_plan(self, *extra):
-        c = cfg()
+        c = open_cfg()
         c["crypto"]["enabled"] = True
         prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), *extra)
         ledger = [row(D0, "deposit", amount=5000), buy(D0, "CASH", 3000, 1.0),
@@ -129,42 +159,39 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(s["plan"]["blocked"], ["crypto"])
         self.assertFalse([o for o in s["plan"]["orders"] if o["bucket"] == "crypto"])
 
-    def test_stop_rule_at_stage_three_leaves_only_cash_and_gold_open(self):
-        c = cfg()
+    def test_a_deep_fall_raises_a_review_and_closes_nothing(self):
+        c = open_cfg()
         d1, d2 = D0 + timedelta(days=30), D0 + timedelta(days=60)
         prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), (D0, "ACTIVE", 2.0),
                        (d1, "INDEX", 2.0), (d2, "INDEX", 0.2), (d2, "ACTIVE", 0.2))
-        # far more cash than target, so without the stop rule a real-estate lot would be proposed
         ledger = [row(D0, "deposit", amount=60000), buy(D0, "CASH", 24000, 1.0), buy(D0, "GOLD", 4000, 6500.0),
                   buy(D0, "INDEX", 16000, 2.0), buy(D0, "ACTIVE", 16000, 2.0)]
-        calm = engine.summary(c, ledger, prices, d1, add=12000)["plan"]
-        self.assertFalse(calm["stopped"])
-        self.assertTrue([t for t in calm["transfers"] if t["to_bucket"] == "real_estate"]
-                        or [o for o in calm["orders"] if o["bucket"] == "real_estate"])
+        calm = engine.summary(c, ledger, prices, d1, add=12000)
+        self.assertNotIn("equity_review", [a["code"] for a in calm["alerts"]])
+        self.assertAlmostEqual(calm["equity_drawdown"], 0.0)
 
         s = engine.summary(c, ledger, prices, d2, add=12000)
         p = s["plan"]
-        self.assertTrue(p["stopped"])
+        self.assertNotIn("stopped", p)
+        self.assertAlmostEqual(s["equity_drawdown"], -0.9)
+        self.assertEqual(s["alerts"][0]["code"], "equity_review")
         self.assertEqual(s["stage"]["name"], "3")
-        self.assertLessEqual({o["bucket"] for o in p["orders"]}, {"cash", "gold"})
-        self.assertEqual(p["transfers"], [])
-        self.assertNotIn("real_estate", p["parked"])
+        # the monthly money still goes where the targets point, the fallen buckets included
+        self.assertLessEqual({"index", "active", "real_estate"}, {o["bucket"] for o in p["orders"]})
         self.assertAlmostEqual(sum(o["amount"] for o in p["orders"]), 12000)
-        # gold is filled to its 15% target and no further; the rest waits in cash
-        got = {o["bucket"]: o["amount"] for o in p["orders"]}
-        total_after = s["total"] + 12000
-        gold_value = next(a["value"] for a in s["allocation"] if a["bucket"] == "gold")
-        self.assertLessEqual(gold_value + got["gold"], 0.15 * total_after + 1)
-        self.assertGreater(got["cash"], got["gold"])
 
-    def test_stop_rule_falls_back_to_risk_flags_without_a_bucket_list(self):
-        c = cfg()
-        del c["rules"]["stop_buckets"]
-        d1, d2 = D0 + timedelta(days=30), D0 + timedelta(days=60)
-        prices = store((D0, "INDEX", 2.0), (d1, "INDEX", 2.4), (d2, "INDEX", 1.6))
-        ledger = [row(D0, "deposit", amount=1000), buy(D0, "INDEX", 1000, 2.0)]
-        p = engine.summary(c, ledger, prices, d2, add=2000)["plan"]
-        self.assertEqual({o["bucket"] for o in p["orders"]}, {"cash", "gold"})
+    def test_review_measures_each_holding_from_its_own_first_purchase(self):
+        c = open_cfg()
+        early, d1 = D0 - timedelta(days=90), D0 + timedelta(days=30)
+        # a high price before the purchase is not a high the holder ever had
+        prices = store((early, "INDEX", 5.0), (D0, "INDEX", 2.0), (d1, "INDEX", 1.8), (D0, "CASH", 1.0))
+        ledger = [row(D0, "deposit", amount=2000), buy(D0, "INDEX", 1000, 2.0), buy(D0, "CASH", 1000, 1.0)]
+        s = engine.summary(c, ledger, prices, d1)
+        self.assertAlmostEqual(s["equity_drawdown"], 1.8 / 2.0 - 1)
+        self.assertNotIn("equity_review", [a["code"] for a in s["alerts"]])
+        # cash and gold never count toward the equity sleeve
+        only_cash = [row(D0, "deposit", amount=1000), buy(D0, "CASH", 1000, 1.0)]
+        self.assertEqual(engine.summary(c, only_cash, prices, d1)["equity_drawdown"], 0.0)
 
 
 class PerformanceTests(unittest.TestCase):
@@ -187,17 +214,20 @@ class PerformanceTests(unittest.TestCase):
         s = engine.summary(c, ledger, prices, d2)
         self.assertAlmostEqual(s["nav"], 0.9)
         self.assertAlmostEqual(s["drawdown"], 1.8 / 2.4 - 1)
-        self.assertEqual(s["alerts"][0]["code"], "stop_drawdown")
-        self.assertTrue(s["plan"]["stopped"])
+        self.assertAlmostEqual(s["equity_drawdown"], 1.8 / 2.4 - 1)
+        self.assertEqual([a["code"] for a in s["alerts"]][:2], ["equity_review", "warn_drawdown"])
 
-    def test_stop_rule_sends_new_money_to_cash_and_gold_only(self):
-        c = cfg()
-        d1, d2 = D0 + timedelta(days=30), D0 + timedelta(days=60)
-        prices = store((D0, "INDEX", 2.0), (d1, "INDEX", 2.4), (d2, "INDEX", 1.6))
-        ledger = [row(D0, "deposit", amount=1000), buy(D0, "INDEX", 1000, 2.0)]
-        p = engine.summary(c, ledger, prices, d2, add=2000)["plan"]
-        self.assertEqual({o["bucket"] for o in p["orders"]}, {"cash", "gold"})
-        self.assertAlmostEqual(sum(o["amount"] for o in p["orders"]), 2000)
+    def test_a_fall_does_not_stop_the_next_stock_lot(self):
+        c = open_cfg()
+        d1 = D0 + timedelta(days=30)
+        prices = store((D0, "CASH", 1.0), (D0, "GOLD", 6500.0), (D0, "INDEX", 2.0), (d1, "INDEX", 1.0))
+        ledger = [row(D0, "deposit", amount=10000), buy(D0, "CASH", 6000, 1.0),
+                  buy(D0, "GOLD", 2000, 6500.0), buy(D0, "INDEX", 2000, 2.0)]
+        s = engine.summary(c, ledger, prices, d1, add=6000)
+        self.assertIn("equity_review", [a["code"] for a in s["alerts"]])
+        got = {o["bucket"]: o["amount"] for o in s["plan"]["orders"]}
+        self.assertEqual(got["index"], 2000)
+        self.assertAlmostEqual(sum(got.values()), 6000)
 
     def test_first_day_fee_shows_in_nav(self):
         c = cfg()

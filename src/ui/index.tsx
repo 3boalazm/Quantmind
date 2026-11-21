@@ -356,9 +356,10 @@ export function Empty({
   );
 }
 
-export function Notice({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+/** `block` is for a notice that holds a list: squared corners and the icon aligned to the first line. */
+export function Notice({ icon, block, children }: { icon?: ReactNode; block?: boolean; children: ReactNode }) {
   return (
-    <div className="notice" role="note">
+    <div className={cx("notice", block && "notice--block")} role="note">
       {icon}
       <span>{children}</span>
     </div>
