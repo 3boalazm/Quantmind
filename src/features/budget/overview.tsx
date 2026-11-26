@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeftRight, CalendarCheck, Check, Coins, HandCoins, Hourglass, Landmark, Receipt, Scale, Trash2, Wallet, X } from "lucide-react";
 import type { BudgetView, Entry } from "@/lib/budget";
@@ -42,9 +43,9 @@ function Overview({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
         <div className="span-12">
           <Notice icon={<CalendarCheck />}>
             شهر <D>{cycleLabel(pending.cycle)}</D> خلص ومستني إقفال.{" "}
-            <a href="/budget/close" className="t-ok">
+            <Link href="/budget/close" className="t-ok">
               راجع الأرقام واقفله
-            </a>
+            </Link>
           </Notice>
         </div>
       ) : null}
@@ -56,7 +57,7 @@ function Overview({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
         value={<N>{egp(data.balances.unallocated)}</N>}
         unit="جنيه"
         icon={<Hourglass />}
-        hint={data.balances.unallocated >= 0.5 ? <a href="/budget/income">وزّعه على الفئات</a> : "كل الدخل متوزّع"}
+        hint={data.balances.unallocated >= 0.5 ? <Link href="/budget/income">وزّعه على الفئات</Link> : "كل الدخل متوزّع"}
       />
       <StatCard className="span-3" label="اتصرف الشهر ده" value={<N>{egp(data.report.spent)}</N>} unit="جنيه" icon={<Receipt />} hint={<>منهم عوارض <N>{egp(data.report.incidental.total)}</N></>} />
       <StatCard
@@ -66,7 +67,7 @@ function Overview({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
         value={<N>{egp(data.invest.ready)}</N>}
         unit="جنيه"
         icon={<Coins />}
-        hint={data.invest.ready >= 0.5 ? <a href="/budget/close">حوّله للمحفظة</a> : "بيتجمع من فئة الاستثمار وباقي الشهر"}
+        hint={data.invest.ready >= 0.5 ? <Link href="/budget/close">حوّله للمحفظة</Link> : "بيتجمع من فئة الاستثمار وباقي الشهر"}
       />
       <StatCard className="span-3" label="كل الفلوس" value={<N>{egp(total)}</N>} unit="جنيه" icon={<Landmark />} hint="مجموع أماكن الفلوس" />
 

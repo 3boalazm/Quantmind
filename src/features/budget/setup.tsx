@@ -176,15 +176,15 @@ function Accounts({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
                 archived={a.archived}
                 onUp={() => {
                   const ids = reorder(data.accounts, a.id, -1);
-                  if (ids) void budget.post({ op: "order", what: "accounts", ids });
+                  return ids ? budget.post({ op: "order", what: "accounts", ids }) : undefined;
                 }}
                 onDown={() => {
                   const ids = reorder(data.accounts, a.id, 1);
-                  if (ids) void budget.post({ op: "order", what: "accounts", ids });
+                  return ids ? budget.post({ op: "order", what: "accounts", ids }) : undefined;
                 }}
                 onEdit={() => setEditing(a)}
-                onArchive={() => void budget.post({ op: "account_save", id: a.id, name: a.name, kind: a.kind, archived: !a.archived })}
-                onDelete={() => void budget.post({ op: "account_delete", id: a.id })}
+                onArchive={() => budget.post({ op: "account_save", id: a.id, name: a.name, kind: a.kind, archived: !a.archived })}
+                onDelete={() => budget.post({ op: "account_delete", id: a.id })}
               />
             </div>
           );
@@ -306,15 +306,15 @@ function Categories({ data, budget }: { data: BudgetView; budget: BudgetHandle }
                 archived={c.archived}
                 onUp={() => {
                   const ids = reorder(data.categories, c.id, -1);
-                  if (ids) void budget.post({ op: "order", what: "categories", ids });
+                  return ids ? budget.post({ op: "order", what: "categories", ids }) : undefined;
                 }}
                 onDown={() => {
                   const ids = reorder(data.categories, c.id, 1);
-                  if (ids) void budget.post({ op: "order", what: "categories", ids });
+                  return ids ? budget.post({ op: "order", what: "categories", ids }) : undefined;
                 }}
                 onEdit={() => setEditing({ ...c, monthly: String(c.monthly) })}
-                onArchive={() => void budget.post({ op: "category_save", id: c.id, name: c.name, monthly: c.monthly, kind: c.kind, archived: !c.archived })}
-                onDelete={() => void budget.post({ op: "category_delete", id: c.id })}
+                onArchive={() => budget.post({ op: "category_save", id: c.id, name: c.name, monthly: c.monthly, kind: c.kind, archived: !c.archived })}
+                onDelete={() => budget.post({ op: "category_delete", id: c.id })}
               />
             </div>
           );
@@ -348,27 +348,63 @@ function RowActions({
   onDelete,
 }: {
   archived: boolean;
-  onUp: () => void;
-  onDown: () => void;
+  onUp: () => Promise<unknown> | void;
+  onDown: () => Promise<unknown> | void;
   onEdit: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
+  onArchive: () => Promise<unknown> | void;
+  onDelete: () => Promise<unknown> | void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  /** One change at a time: the buttons wait until the server has answered. */
+  const run = async (action: () => Promise<unknown> | void) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (asking) {
+    return (
+      <span className="row budget-actions">
+        <span className="t-small">تتحذف؟</span>
+        <IconButton
+          size="sm"
+          variant="ink"
+          label="تأكيد الحذف"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              await onDelete();
+              setAsking(false);
+            })
+          }
+        >
+          <Check />
+        </IconButton>
+        <IconButton size="sm" variant="soft" label="إلغاء" disabled={busy} onClick={() => setAsking(false)}>
+          <X />
+        </IconButton>
+      </span>
+    );
+  }
   return (
-    <span className="row budget-actions">
-      <IconButton size="sm" variant="soft" label="لفوق" onClick={onUp}>
+    <span className="row budget-actions" aria-busy={busy}>
+      <IconButton size="sm" variant="soft" label="لفوق" disabled={busy} onClick={() => void run(onUp)}>
         <ArrowUp />
       </IconButton>
-      <IconButton size="sm" variant="soft" label="لتحت" onClick={onDown}>
+      <IconButton size="sm" variant="soft" label="لتحت" disabled={busy} onClick={() => void run(onDown)}>
         <ArrowDown />
       </IconButton>
-      <IconButton size="sm" variant="soft" label="تعديل" onClick={onEdit}>
+      <IconButton size="sm" variant="soft" label="تعديل" disabled={busy} onClick={onEdit}>
         <Pencil />
       </IconButton>
-      <IconButton size="sm" variant="soft" label={archived ? "تفعيل" : "أرشفة"} onClick={onArchive}>
+      <IconButton size="sm" variant="soft" label={archived ? "تفعيل" : "أرشفة"} disabled={busy} onClick={() => void run(onArchive)}>
         {archived ? <ArchiveRestore /> : <Archive />}
       </IconButton>
-      <IconButton size="sm" variant="soft" label="حذف (لو مفيش عليها حركات)" onClick={onDelete}>
+      <IconButton size="sm" variant="soft" label="حذف (لو مفيش عليها حركات)" disabled={busy} onClick={() => setAsking(true)}>
         <Trash2 />
       </IconButton>
     </span>

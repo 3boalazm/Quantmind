@@ -117,8 +117,10 @@ function Spend({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
           </label>
 
           <div className="stack stack--sm">
-            <span className="field__label">الفئة</span>
-            <div className="choices" role="group" aria-label="الفئة">
+            <span className="field__label" id="spend-category">
+              الفئة
+            </span>
+            <div className="choices" role="group" aria-labelledby="spend-category">
               {categories.map((c) => {
                 const balance = data.balances.categories[c.id] ?? 0;
                 return (
@@ -134,8 +136,10 @@ function Spend({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
           </div>
 
           <div className="stack stack--sm">
-            <span className="field__label">اتدفع من</span>
-            <div className="choices" role="group" aria-label="اتدفع من">
+            <span className="field__label" id="spend-account">
+              اتدفع من
+            </span>
+            <div className="choices" role="group" aria-labelledby="spend-account">
               {accounts.map((a) => (
                 <button key={a.id} type="button" className="choice" aria-pressed={account === a.id} onClick={() => setAccount(a.id)}>
                   {a.name}

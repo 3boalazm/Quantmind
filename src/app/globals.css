@@ -2457,10 +2457,11 @@ html[lang="ar"] .hero__title {
   letter-spacing: -0.03em;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  outline: none;
+  outline: 2px solid transparent;
 }
 .budget-amount__input:focus-visible {
   box-shadow: inset 0 0 0 2px var(--ink);
+  outline-color: Highlight;
 }
 .budget-spend {
   gap: 18px;
