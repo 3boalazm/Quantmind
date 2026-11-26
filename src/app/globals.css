@@ -392,6 +392,74 @@ html[lang="ar"] .num {
 .topbar__spacer {
   flex: 1;
 }
+/* the two interfaces: a segmented switch whose dark pill slides to the one on screen */
+.mode-switch {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 48px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--sh-card);
+}
+.mode-switch::before {
+  content: "";
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-start: 4px;
+  width: calc(50% - 4px);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  transition: transform 0.24s ease;
+}
+.mode-switch[data-mode="budget"]::before {
+  transform: translateX(100%);
+}
+[dir="rtl"] .mode-switch[data-mode="budget"]::before {
+  transform: translateX(-100%);
+}
+.mode-switch a {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-inline: 18px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+.mode-switch a[aria-current="true"] {
+  color: var(--on-ink);
+}
+.mode-switch a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.mode-switch a[aria-current="true"]:focus-visible {
+  outline-offset: -5px;
+  outline-color: var(--on-ink);
+}
+@media (max-width: 400px) {
+  /* both labels must fit side by side on the narrowest phones */
+  .mode-switch a {
+    min-width: 0;
+    padding-inline: 8px;
+    gap: 6px;
+    font-size: 12.5px;
+  }
+}
+.mode-switch svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
 .search {
   display: flex;
   align-items: center;
@@ -1813,13 +1881,17 @@ html[lang="ar"] .hero__title {
   .topbar > .user-chip {
     order: 1;
   }
-  .topbar .search {
+  .topbar .mode-switch {
     order: 2;
+    flex-basis: 100%;
+  }
+  .topbar .search {
+    order: 3;
     flex-basis: 100%;
     max-width: none;
   }
   .topbar .select {
-    order: 3;
+    order: 4;
     flex: 1 1 calc(50% - 4px);
     width: auto !important;
     min-width: 0;
@@ -2547,5 +2619,11 @@ html[lang="ar"] .hero__title {
   .budget-entry .amt {
     margin-inline-start: 66px;
     flex: 1;
+  }
+}
+
+@media (min-width: 901px) {
+  .subnav--phone {
+    display: none;
   }
 }

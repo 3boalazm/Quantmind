@@ -53,7 +53,13 @@ def main():
         expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()
 
         # --- nothing is set up yet
-        page.get_by_role("link", name="ميزانية الشهر").first.click()
+        # the switch at the top moves between the two interfaces; each has its own menu and top bar
+        expect(page.get_by_label("الدفتر")).to_be_visible()
+        expect(page.get_by_role("link", name="مصروف جديد")).to_have_count(0)
+        page.get_by_role("link", name="الدخل والمصاريف", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/budget$"))
+        expect(page.get_by_label("الدفتر")).to_have_count(0)
+        expect(page.get_by_role("link", name="خطة الشراء")).to_have_count(0)
         expect(page.get_by_text("الميزانية لسه ماتجهزتش")).to_be_visible()
         shot(page, "b01-not-ready")
         page.get_by_role("link", name="ابدأ الإعداد").click()
@@ -104,7 +110,7 @@ def main():
         expect(page.get_by_text("مفيش مبلغ مستني توزيع")).to_be_visible()
 
         # --- spending, still dated last month
-        page.get_by_role("link", name="مصروف", exact=True).click()
+        page.get_by_role("link", name="مصروف جديد").first.click()
         expect(page.get_by_role("heading", name="مصروف جديد", level=1)).to_be_visible()
         page.get_by_label("التاريخ").fill(last_month)
         amount = page.get_by_label("المبلغ بالجنيه")
@@ -188,6 +194,8 @@ def main():
         expect(page.locator(".card", has_text="جاهز للاستثمار")).to_contain_text("0.00")
         shot(page, "b08-invested")
 
+        page.get_by_role("link", name="الاستثمار", exact=True).click()
+        expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()
         page.get_by_label("الدفتر").select_option("real")
         page.get_by_role("link", name="العمليات").first.click()
         expect(page.locator("table tbody tr")).to_have_count(1)
@@ -210,9 +218,23 @@ def main():
         row.get_by_role("button", name=re.compile("تأكيد الحذف")).click()
         expect(status).to_contain_text("اتحذفت الحركة")
         expect(page.locator(".stat-card").nth(2)).to_contain_text("4,050")
+        page.get_by_role("link", name="الاستثمار", exact=True).click()
         page.get_by_role("link", name="العمليات").first.click()
         expect(page.get_by_text("مفيش عمليات")).to_be_visible()
         page.get_by_label("الدفتر").select_option("paper")
+
+        # --- the app reopens on the interface used last
+        page.get_by_role("link", name="الدخل والمصاريف", exact=True).click()
+        expect(page.get_by_role("heading", name="ميزانية الشهر", level=1)).to_be_visible()
+        shot(page, "b09-budget-mode", full=False)
+        page.goto(BASE + "/")
+        expect(page).to_have_url(re.compile(r"/budget$"))
+        page.get_by_role("link", name="الاستثمار", exact=True).click()
+        expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()
+        shot(page, "b09-invest-mode", full=False)
+        page.goto(BASE + "/")
+        expect(page.get_by_role("heading", name="لوحة المحفظة", level=1)).to_be_visible()
+        expect(page).to_have_url(re.compile(r":\d+/$"))
 
         # --- phone
         phone = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, locale="ar-EG",
@@ -227,6 +249,18 @@ def main():
             if overflow > 1:
                 problems.append(f"mobile {path} scrolls sideways by {overflow}px")
             shot(mp, name)
+        # the switch still fits on the narrowest phones
+        mp.set_viewport_size({"width": 320, "height": 700})
+        mp.goto(BASE + "/budget")
+        mp.wait_for_selector(".mode-switch")
+        clipped = mp.locator(".mode-switch a").evaluate_all("els => els.filter(e => e.scrollWidth > e.clientWidth + 1).length")
+        overflow = mp.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        if clipped or overflow > 1:
+            problems.append(f"mode switch does not fit at 320px (clipped={clipped}, overflow={overflow})")
+        shot(mp, "b16-mobile-narrow", full=False)
+        mp.set_viewport_size({"width": 390, "height": 844})
+        mp.goto(BASE + "/budget/setup")
+        mp.wait_for_selector(".bento .card")
         # on a phone each setup row has one options button that opens full-size, labelled actions
         expect(mp.get_by_role("button", name="أرشفة")).to_have_count(0)
         mp.get_by_role("button", name="خيارات").first.click()
