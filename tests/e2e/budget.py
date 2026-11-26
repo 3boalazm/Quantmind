@@ -227,6 +227,19 @@ def main():
             if overflow > 1:
                 problems.append(f"mobile {path} scrolls sideways by {overflow}px")
             shot(mp, name)
+        # on a phone each setup row has one options button that opens full-size, labelled actions
+        expect(mp.get_by_role("button", name="أرشفة")).to_have_count(0)
+        mp.get_by_role("button", name="خيارات").first.click()
+        menu = mp.locator(".budget-menu")
+        for label in ("تعديل", "أرشفة", "لفوق", "لتحت", "حذف"):
+            expect(menu.get_by_role("button", name=label, exact=True)).to_be_visible()
+        sizes = menu.get_by_role("button").evaluate_all("els => els.map(e => e.getBoundingClientRect().height)")
+        if min(sizes) < 40:
+            problems.append(f"setup row actions are too small to tap: {sizes}")
+        shot(mp, "b15-mobile-setup-menu")
+        menu.get_by_role("button", name="حذف", exact=True).click()
+        expect(mp.get_by_role("button", name="تأكيد الحذف")).to_be_visible()
+        mp.get_by_role("button", name="إلغاء").click()
         phone.close()
         browser.close()
 

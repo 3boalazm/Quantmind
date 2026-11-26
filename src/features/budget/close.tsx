@@ -223,9 +223,9 @@ function InvestPanel({ data, budget }: { data: BudgetView; budget: BudgetHandle 
           </Field>
           <div className="full row row--between row--wrap">
             <span className="t-small">بيتسجل إيداع في الدفتر الحقيقي للمحفظة.</span>
-            <button type="submit" className="btn btn--ink" disabled={busy}>
+            <Button type="submit" variant="ink" disabled={busy}>
               {busy ? "جاري التحويل…" : "حوّل للمحفظة"}
-            </button>
+            </Button>
           </div>
         </form>
       )}
