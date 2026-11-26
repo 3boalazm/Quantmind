@@ -24,7 +24,8 @@ const SECTIONS = [
 export function BudgetNav() {
   const pathname = usePathname() ?? "";
   return (
-    <nav className="subnav" aria-label="أقسام الميزانية">
+    // On a wide screen the rail already lists these; on a phone the rail is a drawer, so they sit here.
+    <nav className="subnav subnav--phone" aria-label="أقسام الميزانية">
       {SECTIONS.map((item) => (
         <Link key={item.href} href={item.href} className="subnav__item" aria-current={pathname === item.href ? "page" : undefined}>
           {item.label}

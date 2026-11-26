@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, type ReactNode } from "react";
 import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, Sun, TriangleAlert } from "lucide-react";
-import { NAVIGATION } from "@/lib/navigation";
+import { MODE_ORDER, MODES, modeOf, type Mode } from "@/lib/navigation";
 import { BOOK_LABEL, type Book } from "@/lib/types";
 import { PortfolioProvider, usePortfolio } from "@/state/portfolio-provider";
 import { Avatar, Button, Card, cx, Empty, IconButton, Select, Toast } from "@/ui";
@@ -24,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+      <ModeMemory />
       <ConfirmHost />
       <ToastHost />
     </PortfolioProvider>
@@ -40,8 +41,9 @@ function Rail() {
     setMobileOpen(false);
   }, [pathname, setMobileOpen]);
 
+  const mode = MODES[modeOf(pathname)];
   // The most specific entry wins, so "/budget/spend" does not also light up "/budget".
-  const activeHref = NAVIGATION.flatMap((section) => section.items)
+  const activeHref = mode.sections.flatMap((section) => section.items)
     .map((item) => item.href)
     .filter((href) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)))
     .sort((a, b) => b.length - a.length)[0];
@@ -55,16 +57,16 @@ function Rail() {
         onClick={() => app.setMobileOpen(false)}
       />
       <aside className={cx("rail", open && "rail--open", app.mobileOpen && "rail--mobile-open")} aria-label="التنقل">
-        <Link href="/" className="rail__brand">
+        <Link href={mode.home} className="rail__brand">
           <span className="rail__logo">Q</span>
           <span className="rail__name">
             QuantMind
-            <span>محفظة متوافقة مع الشريعة</span>
+            <span>{mode.tagline}</span>
           </span>
         </Link>
 
         <nav className="rail__scroll">
-          {NAVIGATION.map((section, index) => (
+          {mode.sections.map((section, index) => (
             <div key={section.id} className="stack stack--sm">
               {index > 0 ? <div className="rail__sep" /> : null}
               <span className="rail__section">{section.label}</span>
@@ -116,42 +118,98 @@ function Rail() {
   );
 }
 
+const MODE_KEY = "quantmind:mode";
+
+/**
+ * Opens the app where it was last used: someone who came in for the budget last time lands on the
+ * budget again. Only the very first page view is redirected; after that the switch decides.
+ */
+function ModeMemory() {
+  const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  const first = useRef(true);
+  useEffect(() => {
+    try {
+      if (first.current) {
+        first.current = false;
+        if (pathname === "/" && !window.location.search && window.localStorage.getItem(MODE_KEY) === "budget") {
+          router.replace(MODES.budget.home);
+          return;
+        }
+      }
+      window.localStorage.setItem(MODE_KEY, modeOf(pathname));
+    } catch {
+      // storage unavailable: the app simply opens on the portfolio
+    }
+  }, [pathname, router]);
+  return null;
+}
+
+/** The two interfaces side by side; the dark pill slides to the one on screen. */
+function ModeSwitch({ mode }: { mode: Mode }) {
+  return (
+    <nav className="mode-switch" data-mode={mode} aria-label="الواجهة">
+      {MODE_ORDER.map((id) => {
+        const item = MODES[id];
+        const Icon = item.icon;
+        return (
+          <Link key={id} href={item.home} aria-current={id === mode ? "true" : undefined}>
+            <Icon />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 function TopBar() {
   const app = usePortfolio();
+  const mode = modeOf(usePathname() ?? "/");
+  const investing = mode === "invest";
   return (
     <header className="topbar">
       <IconButton label="فتح القائمة" className="menu-btn" onClick={() => app.setMobileOpen(true)}>
         <Menu />
       </IconButton>
 
-      <div className="search">
-        <Search />
-        <input
-          type="search"
-          value={app.searchQuery}
-          placeholder="ابحث في العمليات والأدوات"
-          aria-label="ابحث في العمليات والأدوات"
-          onChange={(event) => app.setSearchQuery(event.target.value)}
-        />
-      </div>
+      <ModeSwitch mode={mode} />
+
+      {investing ? (
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            value={app.searchQuery}
+            placeholder="ابحث في العمليات والأدوات"
+            aria-label="ابحث في العمليات والأدوات"
+            onChange={(event) => app.setSearchQuery(event.target.value)}
+          />
+        </div>
+      ) : null}
 
       <div className="topbar__spacer" />
 
-      <Select
-        className="select--sm select--card"
-        style={{ width: "auto" }}
-        aria-label="الدفتر"
-        value={app.book}
-        onChange={(event) => app.setBook(event.target.value as Book)}
-      >
-        <option value="paper">{BOOK_LABEL.paper}</option>
-        <option value="real">{BOOK_LABEL.real}</option>
-      </Select>
+      {/* The book and the reference prices belong to the portfolio; the budget follows real money only. */}
+      {investing ? (
+        <>
+          <Select
+            className="select--sm select--card"
+            style={{ width: "auto" }}
+            aria-label="الدفتر"
+            value={app.book}
+            onChange={(event) => app.setBook(event.target.value as Book)}
+          >
+            <option value="paper">{BOOK_LABEL.paper}</option>
+            <option value="real">{BOOK_LABEL.real}</option>
+          </Select>
 
-      <IconButton className="topbar__lang" label="تحديث الأسعار المرجعية" onClick={() => void app.pullReference()} disabled={app.pulling}>
-        <RefreshCw className={app.pulling ? "spin" : undefined} />
-      </IconButton>
-      <IconButton label="تسجيل الخروج" onClick={() => void app.signOut()}>
+          <IconButton className="topbar__lang" label="تحديث الأسعار المرجعية" onClick={() => void app.pullReference()} disabled={app.pulling}>
+            <RefreshCw className={app.pulling ? "spin" : undefined} />
+          </IconButton>
+        </>
+      ) : null}
+      <IconButton className={investing ? undefined : "topbar__lang"} label="تسجيل الخروج" onClick={() => void app.signOut()}>
         <LogOut className="flip" />
       </IconButton>
 
@@ -159,7 +217,7 @@ function TopBar() {
         <Avatar name="مصطفى" />
         <div className="user-chip__text">
           <b>مصطفى</b>
-          <span>{BOOK_LABEL[app.book]}</span>
+          <span>{investing ? BOOK_LABEL[app.book] : MODES.budget.label}</span>
         </div>
       </div>
     </header>
