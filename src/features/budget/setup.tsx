@@ -393,7 +393,11 @@ function RowActions({
   }
   const up = () => void run(onUp);
   const down = () => void run(onDown);
-  const archive = () => void run(onArchive);
+  // Moving keeps the menu open, since a row often moves more than one step; archiving is a single act.
+  const archive = () => {
+    setOpen(false);
+    void run(onArchive);
+  };
   const archiveLabel = archived ? "تفعيل" : "أرشفة";
   const archiveIcon = archived ? <ArchiveRestore /> : <Archive />;
   return (
