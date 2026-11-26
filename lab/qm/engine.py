@@ -233,9 +233,16 @@ def blocked_buckets(config: dict, prices: PriceStore, asof: date) -> dict:
     to evaluate it. The same states drive the alerts, so the buy list and the
     alerts can never disagree. A bucket that is switched off is not in the
     targets at all, so it never shows up here in practice.
+
+    A bucket with a closed `gate` waits on a decision made outside the app (a
+    ruling, a tool that is not built yet): its share stays in cash until the
+    gate is opened in the config.
     """
     out = {}
     for bucket, cfg in config["buckets"].items():
+        if (cfg.get("gate") or {}).get("closed"):
+            out[bucket] = "gated"
+            continue
         rule = config["instruments"].get(cfg["instrument"], {}).get("trend_rule")
         if not rule:
             continue
@@ -247,33 +254,26 @@ def blocked_buckets(config: dict, prices: PriceStore, asof: date) -> dict:
     return out
 
 
-def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0.0, blocked: dict | None = None) -> dict:
+def plan(config: dict, val: dict, investable: float, blocked: dict | None = None) -> dict:
     """Split `investable` across buckets to move toward targets without selling anything.
 
     Buckets with a `min_order` are bought in whole lots: a monthly share smaller
     than one lot is parked in cash, and once enough has built up there the plan
     proposes moving a lot across.
 
-    No new money goes to a bucket in `blocked` (an entry rule says wait). Under
-    the stop rule only the buckets in `rules.stop_buckets` stay open; without
-    that list, every bucket flagged `risk` is closed.
+    No new money goes to a bucket in `blocked` (an entry rule or a closed gate
+    says wait). Nothing else closes a bucket: a fall in the portfolio never
+    stops the monthly buying, it only raises a review (see `summary`).
     """
-    rules = config["rules"]
     bucket_cfg = config["buckets"]
     values = defaultdict(float, val["buckets"])
     total_after = val["invested"] + investable
     stage_now, _ = targets_for(config, val["total"])
     stage, targets = targets_for(config, total_after)
-    stopped = current_drawdown <= -rules["stop_drawdown"] + EPS
     blocked = blocked or {}
-    stop_open = rules.get("stop_buckets")
 
     def closed(b: str) -> bool:
-        if b in blocked:
-            return True
-        if not stopped:
-            return False
-        return b not in stop_open if stop_open else bool(bucket_cfg[b].get("risk"))
+        return b in blocked
 
     target_value = {b: pct / 100.0 * total_after for b, pct in targets.items()}
     deficit = {b: 0.0 if closed(b) else max(0.0, target_value[b] - values[b]) for b in targets}
@@ -347,9 +347,31 @@ def plan(config: dict, val: dict, investable: float, current_drawdown: float = 0
         "stage": stage,
         "stage_changed": stage["name"] != stage_now["name"],
         "targets": targets,
-        "stopped": stopped,
         "blocked": sorted(b for b in targets if b in blocked),
+        # what a gated bucket is owed once these orders are placed; it sits in cash until the gate opens
+        "reserved": {b: round(max(0.0, target_value[b] - values[b]), 2)
+                     for b in sorted(targets) if blocked.get(b) == "gated"},
     }
+
+
+def sleeve_drawdown(config: dict, ledger: list[dict], pos: dict, prices: PriceStore, asof: date) -> float:
+    """How far the holdings in `rules.review_buckets` sit below their own highs (0 or negative).
+
+    Each holding is compared with its highest recorded price since it was first
+    bought, weighted by the units held now, so new purchases do not hide a fall.
+    """
+    buckets = set(config["rules"].get("review_buckets") or [])
+    now = top = 0.0
+    for inst in sorted(pos["units"]):
+        if config["instruments"][inst]["bucket"] not in buckets:
+            continue
+        u = pos["units"][inst]
+        first = min(r["date"] for r in ledger if r["type"] == "buy" and r["instrument"] == inst and r["date"] <= asof)
+        current = _price(inst, pos, prices, asof)[0]
+        peak = max([current] + [p for d, p in prices.series(inst, asof) if d >= first])
+        now += u * current
+        top += u * peak
+    return now / top - 1.0 if top > EPS else 0.0
 
 
 # --------------------------------------------------------------------------
@@ -367,7 +389,8 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
     cash_yield = annualised_yield(prices.series(cash_inst, asof))
     investable = val["wallet"] + add
     blocked = blocked_buckets(config, prices, asof)
-    pl = plan(config, val, investable, dd["current"], blocked)
+    pl = plan(config, val, investable, blocked)
+    equity_dd = sleeve_drawdown(config, ledger, pos, prices, asof)
     stage, targets = targets_for(config, val["total"])
 
     total = val["total"]
@@ -392,10 +415,10 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
     def alert(level, code, text):
         alerts.append({"level": level, "code": code, "text": text})
 
-    if dd["current"] <= -rules["stop_drawdown"] + EPS:
-        alert("action", "stop_drawdown",
-              f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كل الإضافات متوقفة ما عدا النقد والذهب. القاعدة بتوقف الشراء بس ومش بتبيع حاجة.")
-    elif dd["current"] <= -rules["warn_drawdown"] + EPS:
+    if equity_dd <= -rules["review_drawdown"] + EPS:
+        alert("action", "equity_review",
+              f"شريحة الأسهم نازلة {abs(equity_dd):.1%} من أعلى سعر. الإيداع الشهري مستمر. قبل الشراء الجاي راجع: مخرجات السيستم، توافق كل سهم مع الضوابط، وحالة كل شركة.")
+    if dd["current"] <= -rules["warn_drawdown"] + EPS:
         alert("warn", "warn_drawdown",
               f"المحفظة نازلة {abs(dd['current']):.1%} من أعلى قيمة. كمّل بنفس المبلغ ومتزودش الإضافة الشهرية دلوقتي.")
     for h in val["holdings"]:
@@ -412,6 +435,13 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
         alert("info", "idle_cash", f"فيه {val['wallet']:,.0f} جنيه في الرصيد لسه متوزعتش. نفّذ خطة الشراء.")
     if pl["stage_changed"]:
         alert("info", "stage_change", f"بعد الإضافة دي المحفظة هتدخل مرحلة {pl['stage']['label']}، والتوزيع المستهدف هيتغير.")
+    # what each gated bucket is owed today (the plan's own figure is after this month's orders)
+    reserved = {b: round(max(0.0, targets[b] / 100.0 * total - val["buckets"].get(b, 0.0)), 2)
+                for b in sorted(targets) if blocked.get(b) == "gated"}
+    for b, amount in reserved.items():
+        gate = config["buckets"][b].get("gate") or {}
+        alert("info", "gated",
+              f"«{config['buckets'][b]['label']}» مقفولة للشراء: {gate.get('reason', 'في انتظار قرار')} نصيبها محجوز في النقد: {amount:,.0f} جنيه لحد دلوقتي.")
     macro = config.get("macro", {})
     if macro.get("as_of"):
         age = (asof - date.fromisoformat(macro["as_of"])).days
@@ -458,6 +488,8 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
         "annualised": (nav_now ** (365.0 / days_running) - 1.0) if days_running >= ANNUALISE_MIN_DAYS and nav_now > 0 else None,
         "drawdown": dd["current"],
         "max_drawdown": dd["max"],
+        "equity_drawdown": equity_dd,
+        "reserved": reserved,
         "days_running": days_running,
         "benchmark": {"value": bm["value"], "diff": total - bm["value"], "meaningful": bm["meaningful"]},
         "cash_yield": cash_yield,
@@ -471,8 +503,8 @@ def summary(config: dict, ledger: list[dict], prices: PriceStore, asof: date, ad
             "transfers": pl["transfers"],
             "stage": {"name": pl["stage"]["name"], "label": pl["stage"]["label"], "notes": pl["stage"].get("notes", [])},
             "stage_changed": pl["stage_changed"],
-            "stopped": pl["stopped"],
             "blocked": pl["blocked"],
+            "reserved": pl["reserved"],
         },
         "alerts": alerts,
         "review": review,

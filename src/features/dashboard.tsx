@@ -81,7 +81,11 @@ export function Dashboard() {
   const tilesOn = Math.round((progress / 100) * tiles);
 
   // 100 = every bucket exactly on target; each point off target (in either direction) costs half a point.
-  const fit = Math.max(0, Math.round(100 - s.allocation.reduce((sum, row) => sum + Math.abs(row.gap), 0) / 2));
+  // A gated bucket's share waiting in cash is the plan working, so that part of the two gaps does not count.
+  const gatedShort = s.allocation.reduce((sum, row) => sum + (config.buckets[row.bucket]?.gate?.closed ? Math.max(0, -row.gap) : 0), 0);
+  const cashOver = Math.max(0, s.allocation.find((row) => row.bucket === "cash")?.gap ?? 0);
+  const offTarget = s.allocation.reduce((sum, row) => sum + Math.abs(row.gap), 0) - 2 * Math.min(gatedShort, cashOver);
+  const fit = Math.max(0, Math.round(100 - offTarget / 2));
 
   const query = app.searchQuery.trim().toLocaleLowerCase();
   const orders = s.plan.orders.filter((order) => !query || `${order.name} ${order.label} ${order.instrument}`.toLocaleLowerCase().includes(query));
@@ -307,6 +311,11 @@ export function Dashboard() {
                   <span>
                     الفرق: <N>{signedPoints(row.gap)}</N> نقطة
                   </span>
+                  {s.reserved[row.bucket] ? (
+                    <span>
+                      مقفولة، ونصيبها في النقد: <N>{egp(s.reserved[row.bucket])}</N>
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ))}

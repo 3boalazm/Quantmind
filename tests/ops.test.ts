@@ -35,8 +35,8 @@ describe("write operations", () => {
 
   it("other instruments need a price or the units received", () => {
     const ledger = apply([], ops.deposit(state(), DAY, 1000));
-    expect(() => ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400 })).toThrow(ops.OpError);
-    const byUnits = ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400, units: 200, confirm: true });
+    expect(() => ops.buy(state(ledger), DAY, { instrument: "ACTIVE", amount: 400 })).toThrow(/مفيش سعر معروف/);
+    const byUnits = ops.buy(state(ledger), DAY, { instrument: "ACTIVE", amount: 400, units: 200, confirm: true });
     expect(byUnits.ledger?.price).toBe(2);
   });
 
@@ -128,7 +128,7 @@ describe("price sanity check", () => {
 
   it("asks about the very first price of an instrument, showing the unit price", () => {
     const ledger = apply([], ops.deposit(state(), DAY, 5000));
-    expect(() => ops.buy(state(ledger), DAY, { instrument: "INDEX", amount: 400, price: 2.07 })).toThrow(/2\.07/);
+    expect(() => ops.buy(state(ledger), DAY, { instrument: "ACTIVE", amount: 400, price: 2.07 })).toThrow(/2\.07/);
     expect(() => ops.setPrice(state(ledger), DAY, "ACTIVE", 11.8)).toThrow(ops.ConfirmError);
     // a cash-like fund starting at 1 pound per unit is the convention, not a surprise
     expect(ops.buy(state(ledger), DAY, { instrument: "CASH", amount: 1200 }).ledger?.price).toBe(1);

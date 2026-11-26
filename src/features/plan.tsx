@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck, ListChecks, OctagonAlert, PiggyBank } from "lucide-react";
+import { CheckCheck, ClipboardCheck, ListChecks, OctagonAlert, PiggyBank, Stethoscope } from "lucide-react";
 import { AddAmount } from "@/features/add-amount";
 import { BUCKET_TONE, BucketIcon } from "@/features/shared";
 import { egp, egp2, formatDate, pct, price as formatPrice, signedEgp, signedPct, units as formatUnits } from "@/lib/format";
@@ -16,6 +16,8 @@ export function PlanScreen() {
   const { config } = data;
   const stages = [...config.stages].sort((a, b) => a.min_value - b.min_value);
   const parked = Object.entries(s.plan.parked);
+  const held = new Set(s.holdings.map((holding) => holding.instrument));
+  const underReview = s.equity_drawdown <= -config.rules.review_drawdown + 1e-9;
 
   return (
     <>
@@ -61,14 +63,28 @@ export function PlanScreen() {
 
         <Card className="span-8">
           <CardHead title="أوامر الشهر" hint="نفّذها في التطبيقات، وبعدين سجّل كل واحدة هنا" />
-          {s.plan.stopped ? (
-            <Notice icon={<OctagonAlert />}>قاعدة الإيقاف مفعّلة: كل الإضافات متوقفة ما عدا النقد والذهب لحد ما الهبوط يقل.</Notice>
-          ) : null}
-          {s.plan.blocked.map((bucket) => (
-            <Notice key={bucket} icon={<OctagonAlert />}>
-              «{config.buckets[bucket]?.label ?? bucket}» مقفولة للشراء دلوقتي حسب قاعدة الاتجاه، ونصيبها اتوزّع على باقي الأدوات. التفاصيل في التنبيهات.
+          {underReview ? (
+            <Notice icon={<Stethoscope />}>
+              مراجعة تشخيصية: شريحة الأسهم نازلة <N>{pct(Math.abs(s.equity_drawdown), 1)}</N> من أعلى سعر. الإيداع مستمر، وقبل الشراء الجاي راجع مخرجات السيستم وكل سهم على حدة.
             </Notice>
-          ))}
+          ) : null}
+          {s.plan.blocked.map((bucket) =>
+            config.buckets[bucket]?.gate?.closed ? (
+              <Notice key={bucket} icon={<OctagonAlert />}>
+                «{config.buckets[bucket].label}» مقفولة للشراء: <Mixed text={config.buckets[bucket].gate?.reason ?? "في انتظار قرار"} /> نصيبها بيتجمع في النقد
+                {s.plan.reserved[bucket] ? (
+                  <>
+                    : <N>{egp(s.plan.reserved[bucket])}</N> جنيه بعد أوامر الشهر ده
+                  </>
+                ) : null}
+                .
+              </Notice>
+            ) : (
+              <Notice key={bucket} icon={<OctagonAlert />}>
+                «{config.buckets[bucket]?.label ?? bucket}» مقفولة للشراء دلوقتي حسب قاعدة الاتجاه، ونصيبها اتوزّع على باقي الأدوات. التفاصيل في التنبيهات.
+              </Notice>
+            ),
+          )}
           {s.plan.orders.length === 0 && s.plan.transfers.length === 0 ? (
             <Empty icon={<CheckCheck />} title="مفيش مبلغ للتوزيع" description="اكتب مبلغ الإضافة فوق، أو سجّل إيداع من شاشة العمليات." />
           ) : (
@@ -100,7 +116,9 @@ export function PlanScreen() {
                   </Bubble>
                   <div className="list__main">
                     <b>تحويل من النقد إلى {transfer.to_name}</b>
-                    <span>بيع من صندوق النقد بالقيمة دي ثم شراء الحصة</span>
+                    <span>
+                      <Mixed text={config.buckets[transfer.to_bucket]?.lot_hint ?? "بيع من صندوق النقد بالقيمة دي ثم شراء الحصة"} />
+                    </span>
                   </div>
                   <Badge tone={BUCKET_TONE[transfer.to_bucket]}>تحويل</Badge>
                 </div>
@@ -112,6 +130,20 @@ export function PlanScreen() {
               نصيب «{config.buckets[bucket]?.label ?? bucket}» الشهر ده <N>{egp2(amount)}</N> جنيه، أقل من أصغر شراء ممكن (<N>{egp(config.buckets[bucket]?.min_order ?? 0)}</N>)، فاتركن في النقد لحد ما يكمل.
             </Notice>
           ))}
+          {[...s.plan.orders.map((order) => order.instrument), ...s.plan.transfers.map((transfer) => transfer.to)]
+            .filter((instrument, i, all) => all.indexOf(instrument) === i && !held.has(instrument) && (config.instruments[instrument]?.checks ?? []).length > 0)
+            .map((instrument) => (
+              <Notice key={instrument} block icon={<ClipboardCheck />}>
+                <b>قبل أول شراء في {config.instruments[instrument].name}:</b>
+                <ul className="checks">
+                  {(config.instruments[instrument].checks ?? []).map((check) => (
+                    <li key={check}>
+                      <Mixed text={check} />
+                    </li>
+                  ))}
+                </ul>
+              </Notice>
+            ))}
         </Card>
 
         {stages.map((stage) => {
@@ -169,9 +201,9 @@ export function PlanScreen() {
             </div>
             <div>
               <b>
-                <N>{pct(config.rules.stop_drawdown, 0)}</N>
+                <N>{pct(config.rules.review_drawdown, 0)}</N>
               </b>
-              <span>هبوط يقفل كل شيء عدا النقد والذهب</span>
+              <span>هبوط في شريحة الأسهم يفتح مراجعة تشخيصية (الإيداع مستمر)</span>
             </div>
             <div>
               <b>

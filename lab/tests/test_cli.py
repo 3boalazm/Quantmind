@@ -66,7 +66,7 @@ class CliTests(unittest.TestCase):
         with open(out, encoding="utf-8") as f:
             page = f.read()
         self.assertIn("dir='rtl'", page)
-        self.assertIn("1,200", page)
+        self.assertIn("1,600", page)  # 1,200 of cash plus the 400 stock share held while the gate is closed
         self.assertTrue(os.path.exists(os.path.join(self.root, "r.json")))
 
     def test_full_simulation_runs_clean(self):
