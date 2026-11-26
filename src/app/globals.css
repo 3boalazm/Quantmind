@@ -438,6 +438,23 @@ html[lang="ar"] .num {
 .mode-switch a[aria-current="true"] {
   color: var(--on-ink);
 }
+.mode-switch a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.mode-switch a[aria-current="true"]:focus-visible {
+  outline-offset: -5px;
+  outline-color: var(--on-ink);
+}
+@media (max-width: 400px) {
+  /* both labels must fit side by side on the narrowest phones */
+  .mode-switch a {
+    min-width: 0;
+    padding-inline: 8px;
+    gap: 6px;
+    font-size: 12.5px;
+  }
+}
 .mode-switch svg {
   width: 16px;
   height: 16px;

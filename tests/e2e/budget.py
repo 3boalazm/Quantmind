@@ -249,6 +249,18 @@ def main():
             if overflow > 1:
                 problems.append(f"mobile {path} scrolls sideways by {overflow}px")
             shot(mp, name)
+        # the switch still fits on the narrowest phones
+        mp.set_viewport_size({"width": 320, "height": 700})
+        mp.goto(BASE + "/budget")
+        mp.wait_for_selector(".mode-switch")
+        clipped = mp.locator(".mode-switch a").evaluate_all("els => els.filter(e => e.scrollWidth > e.clientWidth + 1).length")
+        overflow = mp.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        if clipped or overflow > 1:
+            problems.append(f"mode switch does not fit at 320px (clipped={clipped}, overflow={overflow})")
+        shot(mp, "b16-mobile-narrow", full=False)
+        mp.set_viewport_size({"width": 390, "height": 844})
+        mp.goto(BASE + "/budget/setup")
+        mp.wait_for_selector(".bento .card")
         # on a phone each setup row has one options button that opens full-size, labelled actions
         expect(mp.get_by_role("button", name="أرشفة")).to_have_count(0)
         mp.get_by_role("button", name="خيارات").first.click()
