@@ -34,8 +34,12 @@ interface PortfolioContextValue {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  /** Calls a write endpoint, shows the outcome as a toast and reloads the data. Resolves to true on success. */
-  send: (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown) => Promise<boolean>;
+  /**
+   * Calls a write endpoint, reloads the data and shows the outcome as a toast. Resolves to true on success.
+   * `also` reloads whatever else the screen shows; the toast waits for it, so the message never
+   * appears while the figures on screen are still the old ones.
+   */
+  send: (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown, also?: () => Promise<unknown>) => Promise<boolean>;
   toast: string | null;
   notify: (message: string) => void;
   /** An entry the server wants confirmed (a price far from the last reading). */
@@ -164,7 +168,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const send = useCallback(
-    async (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown) => {
+    async (method: "POST" | "PUT" | "DELETE", url: string, body?: unknown, also?: () => Promise<unknown>) => {
       try {
         const request = (payloadBody: unknown) =>
           fetch(url, {
@@ -193,8 +197,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           notify(payload?.error ?? "العملية ما تمتش.");
           return false;
         }
+        await Promise.all([load(current.current.book, current.current.add), also?.()]);
         if (typeof payload?.message === "string") notify(payload.message);
-        await load(current.current.book, current.current.add);
         return true;
       } catch {
         notify("مفيش اتصال بالخادم. العملية ما اتسجلتش.");

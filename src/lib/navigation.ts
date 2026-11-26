@@ -1,4 +1,4 @@
-import { ArrowLeftRight, LayoutDashboard, LineChart, ListChecks, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CalendarCheck, LayoutDashboard, LineChart, ListChecks, Receipt, Settings, Wallet, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   id: string;
@@ -22,6 +22,15 @@ export const NAVIGATION: NavSection[] = [
       { id: "plan", href: "/plan", label: "خطة الشراء", icon: ListChecks },
       { id: "ledger", href: "/ledger", label: "العمليات", icon: ArrowLeftRight },
       { id: "prices", href: "/prices", label: "الأسعار والأرصدة", icon: LineChart },
+    ],
+  },
+  {
+    id: "budget",
+    label: "الميزانية",
+    items: [
+      { id: "budget", href: "/budget", label: "ميزانية الشهر", icon: Wallet },
+      { id: "budget-spend", href: "/budget/spend", label: "مصروف جديد", icon: Receipt },
+      { id: "budget-close", href: "/budget/close", label: "التقارير والإقفال", icon: CalendarCheck },
     ],
   },
   {
