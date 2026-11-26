@@ -1,6 +1,7 @@
 import * as ops from "@/lib/ops";
 import { body, bookOf, dayOf, guard, handle, HttpError, ok } from "@/server/api";
 import { deleteLedger, insertLedger, ledgerHasOp, upsertPrice, withBook } from "@/server/db";
+import { ledgerRowFromBudget } from "@/server/budget";
 import { loadState } from "@/server/state";
 
 export const runtime = "nodejs";
@@ -71,6 +72,10 @@ export async function DELETE(request: Request) {
     const id = Number(url.searchParams.get("id"));
     if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, "رقم العملية غير صالح.");
     await withBook(book, async (q) => {
+      if (await ledgerRowFromBudget(q, book, id)) {
+        // Deleting it here would leave the budget saying the money went to a portfolio that never got it.
+        throw new HttpError(400, "الإيداع ده جاي من الميزانية. احذفه من سجل الميزانية علشان الرصيدين يفضلوا متطابقين.");
+      }
       const state = await loadState(q, book);
       ops.checkRemoval(state.ledger, id);
       await deleteLedger(q, book, id);

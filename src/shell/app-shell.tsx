@@ -40,6 +40,12 @@ function Rail() {
     setMobileOpen(false);
   }, [pathname, setMobileOpen]);
 
+  // The most specific entry wins, so "/budget/spend" does not also light up "/budget".
+  const activeHref = NAVIGATION.flatMap((section) => section.items)
+    .map((item) => item.href)
+    .filter((href) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <>
       <button
@@ -64,7 +70,7 @@ function Rail() {
               <span className="rail__section">{section.label}</span>
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                const active = item.href === activeHref;
                 return (
                   <Link
                     key={item.id}

@@ -83,6 +83,51 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
   at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS auth_attempts_ip_at ON auth_attempts (ip, at);
+CREATE TABLE IF NOT EXISTS budget_categories (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  monthly     DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (monthly >= 0),
+  kind        TEXT NOT NULL DEFAULT 'spend' CHECK (kind IN ('spend','buffer','invest')),
+  position    INTEGER NOT NULL DEFAULT 0,
+  archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS budget_accounts (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'cash' CHECK (kind IN ('bank','cash','wallet')),
+  position    INTEGER NOT NULL DEFAULT 0,
+  archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS budget_entries (
+  id              BIGSERIAL PRIMARY KEY,
+  day             DATE NOT NULL,
+  type            TEXT NOT NULL CHECK (type IN ('income','allocate','expense','transfer','loan','repay','move','invest')),
+  amount          DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+  category_id     BIGINT REFERENCES budget_categories (id),
+  to_category_id  BIGINT REFERENCES budget_categories (id),
+  account_id      BIGINT REFERENCES budget_accounts (id),
+  to_account_id   BIGINT REFERENCES budget_accounts (id),
+  source          TEXT NOT NULL DEFAULT '',
+  incidental      BOOLEAN NOT NULL DEFAULT false,
+  reconcile       BOOLEAN NOT NULL DEFAULT false,
+  batch           TEXT NOT NULL DEFAULT '',
+  note            TEXT NOT NULL DEFAULT '',
+  op_id           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS budget_entries_day ON budget_entries (day, id);
+CREATE INDEX IF NOT EXISTS budget_entries_op ON budget_entries (op_id) WHERE op_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS budget_closes (
+  cycle_start DATE PRIMARY KEY,
+  cycle_end   DATE NOT NULL,
+  closed_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS budget_ops (
+  op_id       TEXT PRIMARY KEY,
+  at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 /** Creates the tables on first use. An advisory lock keeps parallel cold starts from racing. */
@@ -109,7 +154,7 @@ function ensureSchema(): Promise<void> {
   return globalForDb.qmSchema;
 }
 
-type Queryable = Pick<PoolClient, "query">;
+export type Queryable = Pick<PoolClient, "query">;
 
 export async function db(): Promise<Queryable> {
   await ensureSchema();
@@ -123,6 +168,29 @@ export async function withBook<T>(book: string, fn: (client: Queryable) => Promi
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(7426002, hashtext($1))", [book]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** The lock a write to `book` holds; the budget takes it as well when it creates a deposit. */
+export async function lockBook(q: Queryable, book: string): Promise<void> {
+  await q.query("SELECT pg_advisory_xact_lock(7426002, hashtext($1))", [book]);
+}
+
+/** Runs `fn` in one transaction; budget writes are serialised among themselves. */
+export async function withBudget<T>(fn: (client: Queryable) => Promise<T>): Promise<T> {
+  await ensureSchema();
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7426003)");
     const result = await fn(client);
     await client.query("COMMIT");
     return result;

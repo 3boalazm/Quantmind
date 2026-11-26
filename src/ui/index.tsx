@@ -361,7 +361,7 @@ export function Notice({ icon, block, children }: { icon?: ReactNode; block?: bo
   return (
     <div className={cx("notice", block && "notice--block")} role="note">
       {icon}
-      <span>{children}</span>
+      {block ? <div>{children}</div> : <span>{children}</span>}
     </div>
   );
 }
