@@ -153,9 +153,9 @@ function IncomeForm({ data, budget }: { data: BudgetView; budget: BudgetHandle }
           <span className="t-small t-muted">
             مستني التوزيع دلوقتي: <N>{egp2(data.balances.unallocated)}</N> جنيه
           </span>
-          <button type="submit" className="btn btn--ink" disabled={busy}>
+          <Button type="submit" variant="ink" disabled={busy}>
             {busy ? "جاري الحفظ…" : source === "salary" ? "سجّل المرتب" : "سجّل الدخل"}
-          </button>
+          </Button>
         </div>
       </form>
     </Card>
@@ -238,9 +238,9 @@ function Distribute({ data, budget }: { data: BudgetView; budget: BudgetHandle }
             <span className="t-small t-muted">
               المستني <N>{egp2(waiting)}</N> · هتوزّع <N>{egp2(total)}</N>
             </span>
-            <button type="submit" className="btn btn--ink" disabled={busy || total <= 0 || left < -0.005}>
+            <Button type="submit" variant="ink" disabled={busy || total <= 0 || left < -0.005}>
               {busy ? "جاري الحفظ…" : "وزّع"}
-            </button>
+            </Button>
           </div>
         </form>
       )}

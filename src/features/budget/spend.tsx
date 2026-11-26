@@ -5,7 +5,7 @@ import { Receipt } from "lucide-react";
 import type { BudgetView } from "@/lib/budget";
 import { egp, egp2 } from "@/lib/format";
 import { useBudget, type BudgetHandle } from "@/state/budget";
-import { Card, CardHead, Field, Input, Notice, PageHead, Select, Switch, cx } from "@/ui";
+import { Button, Card, CardHead, Field, Input, Notice, PageHead, Select, Switch, cx } from "@/ui";
 import { N } from "@/ui/text";
 import { Entries } from "./overview";
 import { BudgetGate, BudgetNav } from "./shared";
@@ -99,10 +99,9 @@ function Spend({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
     <div className="bento">
       <Card className="span-6">
         <form className="stack budget-spend" onSubmit={submit}>
-          <label className="budget-amount">
-            <span className="t-label">المبلغ بالجنيه</span>
-            <input
-              className="budget-amount__input"
+          <Field label="المبلغ بالجنيه">
+            <Input
+              className="input--hero"
               type="number"
               inputMode="decimal"
               dir="ltr"
@@ -114,7 +113,7 @@ function Spend({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
             />
-          </label>
+          </Field>
 
           <div className="stack stack--sm">
             <span className="field__label" id="spend-category">
@@ -180,13 +179,13 @@ function Spend({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
             </Field>
           </div>
 
-          <button type="submit" className="btn btn--ink budget-submit" disabled={busy || category === null || account === null || !(value > 0)}>
+          <Button type="submit" variant="ink" className="budget-submit" disabled={busy || category === null || account === null || !(value > 0)}>
             {busy ? "جاري الحفظ…" : category === null ? "اختار الفئة" : account === null ? "اختار منين اتدفع" : "سجّل المصروف"}
-          </button>
+          </Button>
         </form>
       </Card>
 
-      <div className="span-6 stack budget-side">
+      <div className="span-6 stack">
         <Card tone="soft">
           <CardHead title="الباقي في الفئات" hint="بيتحدّث بعد كل مصروف." />
           <div className="kv">

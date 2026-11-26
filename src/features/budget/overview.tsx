@@ -144,9 +144,9 @@ function Categories({ data, budget }: { data: BudgetView; budget: BudgetHandle }
           </div>
           <div className="full row row--between row--wrap">
             <span className="t-small t-muted">{loan ? "هتتسجل كسلفة وتفضل ظاهرة لحد ما تترد." : "تحويل نهائي: مفيش حاجة هتترد."}</span>
-            <button type="submit" className="btn btn--ink" disabled={busy}>
+            <Button type="submit" variant="ink" disabled={busy}>
               {busy ? "جاري الحفظ…" : loan ? "سجّل السلفة" : "حوّل"}
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}
@@ -279,9 +279,9 @@ function Accounts({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
           </Field>
           <div className="full row row--between row--wrap">
             <span className="t-small t-muted">سحب كاش أو شحن محفظة: الفئات مابتتغيرش.</span>
-            <button type="submit" className="btn btn--ink" disabled={busy}>
+            <Button type="submit" variant="ink" disabled={busy}>
               {busy ? "جاري الحفظ…" : "انقل"}
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}
@@ -330,9 +330,9 @@ function Accounts({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
                 </>
               )}
             </span>
-            <button type="submit" className="btn btn--ink" disabled={busy}>
+            <Button type="submit" variant="ink" disabled={busy}>
               {busy ? "جاري الحفظ…" : "طابق"}
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Check, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Check, Ellipsis, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
 import type { Account, AccountKind, BudgetView, Category, CategoryKind } from "@/lib/budget";
 import { egp, egp2 } from "@/lib/format";
 import { useBudget, type BudgetHandle } from "@/state/budget";
@@ -95,9 +95,9 @@ function Payday({ data, budget }: { data: BudgetView; budget: BudgetHandle }) {
           <Input type="number" inputMode="numeric" dir="ltr" required min="1" max="31" step="1" value={payday} onChange={(event) => setPayday(event.target.value)} />
         </Field>
         <p className="t-small t-muted">لو الشهر أقصر من اليوم ده، الشهر المالي بيبدأ من آخر يوم فيه.</p>
-        <button type="submit" className="btn btn--ink" disabled={busy || payday === String(data.payday ?? "")}>
+        <Button type="submit" variant="ink" disabled={busy || payday === String(data.payday ?? "")}>
           {busy ? "جاري الحفظ…" : "احفظ"}
-        </button>
+        </Button>
       </form>
     </Card>
   );
@@ -163,7 +163,7 @@ function Accounts({ data, budget }: { data: BudgetView; budget: BudgetHandle }) 
             );
           }
           return (
-            <div key={a.id} className="list__row">
+            <div key={a.id} className="list__row budget-row">
               <div className="list__main">
                 <b>
                   {a.name} {a.archived ? <Badge tone="outline">مؤرشف</Badge> : null}
@@ -293,7 +293,7 @@ function Categories({ data, budget }: { data: BudgetView; budget: BudgetHandle }
             );
           }
           return (
-            <div key={c.id} className="list__row">
+            <div key={c.id} className="list__row budget-row">
               <div className="list__main">
                 <b>
                   {c.name} <Badge tone={KIND_TONE[c.kind]}>{KIND_LABEL[c.kind]}</Badge> {c.archived ? <Badge tone="outline">مؤرشفة</Badge> : null}
@@ -356,6 +356,7 @@ function RowActions({
 }) {
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [open, setOpen] = useState(false);
   /** One change at a time: the buttons wait until the server has answered. */
   const run = async (action: () => Promise<unknown> | void) => {
     if (busy) return;
@@ -390,23 +391,65 @@ function RowActions({
       </span>
     );
   }
+  const up = () => void run(onUp);
+  const down = () => void run(onDown);
+  // Moving keeps the menu open, since a row often moves more than one step; archiving is a single act.
+  const archive = () => {
+    setOpen(false);
+    void run(onArchive);
+  };
+  const archiveLabel = archived ? "تفعيل" : "أرشفة";
+  const archiveIcon = archived ? <ArchiveRestore /> : <Archive />;
   return (
-    <span className="row budget-actions" aria-busy={busy}>
-      <IconButton size="sm" variant="soft" label="لفوق" disabled={busy} onClick={() => void run(onUp)}>
-        <ArrowUp />
+    <>
+      <span className="row budget-actions budget-actions--wide" aria-busy={busy}>
+        <IconButton size="sm" variant="soft" label="لفوق" disabled={busy} onClick={up}>
+          <ArrowUp />
+        </IconButton>
+        <IconButton size="sm" variant="soft" label="لتحت" disabled={busy} onClick={down}>
+          <ArrowDown />
+        </IconButton>
+        <IconButton size="sm" variant="soft" label="تعديل" disabled={busy} onClick={onEdit}>
+          <Pencil />
+        </IconButton>
+        <IconButton size="sm" variant="soft" label={archiveLabel} disabled={busy} onClick={archive}>
+          {archiveIcon}
+        </IconButton>
+        <IconButton size="sm" variant="soft" label="حذف (لو مفيش عليها حركات)" disabled={busy} onClick={() => setAsking(true)}>
+          <Trash2 />
+        </IconButton>
+      </span>
+      {/* On a phone the five small buttons become one, opening full-size labelled ones with room between them. */}
+      <IconButton className="budget-more" variant="soft" label="خيارات" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Ellipsis />
       </IconButton>
-      <IconButton size="sm" variant="soft" label="لتحت" disabled={busy} onClick={() => void run(onDown)}>
-        <ArrowDown />
-      </IconButton>
-      <IconButton size="sm" variant="soft" label="تعديل" disabled={busy} onClick={onEdit}>
-        <Pencil />
-      </IconButton>
-      <IconButton size="sm" variant="soft" label={archived ? "تفعيل" : "أرشفة"} disabled={busy} onClick={() => void run(onArchive)}>
-        {archived ? <ArchiveRestore /> : <Archive />}
-      </IconButton>
-      <IconButton size="sm" variant="soft" label="حذف (لو مفيش عليها حركات)" disabled={busy} onClick={() => setAsking(true)}>
-        <Trash2 />
-      </IconButton>
-    </span>
+      {open ? (
+        <div className="budget-menu" aria-busy={busy}>
+          <Button variant="soft" icon={<Pencil />} disabled={busy} onClick={onEdit}>
+            تعديل
+          </Button>
+          <Button variant="soft" icon={archiveIcon} disabled={busy} onClick={archive}>
+            {archiveLabel}
+          </Button>
+          <Button variant="soft" icon={<ArrowUp />} disabled={busy} onClick={up}>
+            لفوق
+          </Button>
+          <Button variant="soft" icon={<ArrowDown />} disabled={busy} onClick={down}>
+            لتحت
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Trash2 />}
+            disabled={busy}
+            onClick={() => {
+              setOpen(false);
+              setAsking(true);
+            }}
+          >
+            حذف
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }
