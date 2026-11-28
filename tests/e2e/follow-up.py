@@ -175,6 +175,40 @@ def main():
         expect(row(page, MIXED).get_by_text("لسه ماتراجعتش")).to_be_visible()
         shot(page, "f06-undone")
 
+
+        # --- phone notifications: the settings card, and the API refusing what it should
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.goto(BASE + "/settings")
+        expect(page.get_by_role("heading", name="إشعارات المراجعات")).to_be_visible()
+        # the test server has no VAPID keys, so the card says what is missing instead of offering a button
+        expect(page.get_by_text(re.compile("الخادم لسه مش مجهّز للإشعارات"))).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("فعّل الإشعارات"))).to_have_count(0)
+        shot(page, "f08-push-card")
+        info = ctx.request.get(BASE + "/api/push").json()
+        if info.get("configured") is not False or info.get("devices") != 0:
+            problems.append(f"unexpected push status: {info}")
+        device = {"endpoint": "https://fcm.googleapis.com/fcm/send/e2e-device", "keys": {
+            "p256dh": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM",
+            "auth": "tBHItJI5svbpez7KI4CCXg"}}
+        for op, extra in (("subscribe", {"subscription": device}), ("test", {})):
+            reply = ctx.request.post(BASE + "/api/push", data={"op": op, **extra})
+            if reply.status != 400:
+                problems.append(f"push {op} without server keys answered {reply.status}, expected a refusal")
+        bad_host = ctx.request.post(BASE + "/api/push", data={"op": "unsubscribe", "endpoint": "https://example.com/x"})
+        if bad_host.status != 400:
+            problems.append(f"an endpoint outside the push services answered {bad_host.status}")
+        unauth = ctx.browser.new_context().request.post(BASE + "/api/push", data={"op": "test"})
+        if unauth.status == 200:
+            problems.append("push test worked without signing in")
+        secret = os.environ.get("CRON_SECRET")
+        cron = ctx.browser.new_context().request
+        if cron.get(BASE + "/api/cron/reviews").status not in (401, 503):
+            problems.append("the reviews cron answered without the secret")
+        if secret:
+            done = cron.get(BASE + "/api/cron/reviews", headers={"Authorization": f"Bearer {secret}"})
+            if not done.ok or done.json().get("status") != "not_configured":
+                problems.append(f"the reviews cron did not report missing keys: {done.status} {done.text()[:120]}")
+
         # --- the phone: nothing spills sideways, the menu still shows the count
         page.set_viewport_size({"width": 390, "height": 844})
         page.goto(BASE + "/follow-up")
