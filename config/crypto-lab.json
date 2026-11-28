@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "start": "2026-11-28",
+  "deposit": 1000,
+  "day": 28,
+  "cost": 0.01,
+  "cash_yield": 0.18,
+  "sma_days": 200,
+  "slope_days": 30,
+  "exit_days": 5,
+  "vol_days": 20,
+  "vol_max": 1.0,
+  "switch": {
+    "lag_days": 180,
+    "lag_gap": 0.05,
+    "back_days": 90,
+    "back_gap": 0.03,
+    "confirm": 2,
+    "warmup_months": 6
+  }
+}

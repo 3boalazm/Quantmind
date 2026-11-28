@@ -2627,3 +2627,19 @@ html[lang="ar"] .hero__title {
     display: none;
   }
 }
+
+/* Crypto paper books */
+.lab-rule {
+  align-items: flex-start;
+}
+.lab-rule .list__main span {
+  white-space: normal;
+}
+.lab-signals .list__main b {
+  white-space: normal;
+}
+@media (max-width: 640px) {
+  .table td.lab-gap {
+    display: none;
+  }
+}

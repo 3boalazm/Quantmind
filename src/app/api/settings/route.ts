@@ -19,10 +19,7 @@ export async function PUT(request: Request) {
     const q = await db();
     const next: Overrides = { ...((await readSetting<Overrides>(q, OVERRIDES_KEY)) ?? {}) };
     if ("monthly_contribution" in data) next.monthly_contribution = numberIn(data.monthly_contribution, 0, 1e7, "الإضافة الشهرية");
-    if ("crypto_enabled" in data) {
-      if (typeof data.crypto_enabled !== "boolean") throw new HttpError(400, "قيمة غير صالحة.");
-      next.crypto_enabled = data.crypto_enabled;
-    }
+    if ("crypto_enabled" in data) throw new HttpError(400, "الكريبتو مابقاش خانة في المحفظة. بقى شريحة مستقلة بتتجرب على دفاتر تجريبية.");
     if ("cbe_deposit_rate" in data || "inflation_urban" in data) {
       const asOf = data.macro_as_of === undefined ? today() : data.macro_as_of;
       if (!isISODate(asOf) || asOf > today()) throw new HttpError(400, "تاريخ الأرقام غير صالح.");

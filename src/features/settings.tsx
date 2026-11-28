@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Bitcoin, CalendarClock, Landmark, LogOut, Settings, Smartphone } from "lucide-react";
 import { formatDate, pct } from "@/lib/format";
 import { usePortfolio } from "@/state/portfolio-provider";
-import { Badge, Bubble, Button, Card, CardHead, Field, Input, Notice, PageHead, Switch } from "@/ui";
+import { Badge, Bubble, Button, Card, CardHead, Field, Input, Notice, PageHead } from "@/ui";
 import { D, N } from "@/ui/text";
 
 export function SettingsScreen() {
@@ -15,7 +15,6 @@ export function SettingsScreen() {
   const [rate, setRate] = useState(String(Number(((config.macro.cbe_deposit_rate ?? 0) * 100).toFixed(2))));
   const [inflation, setInflation] = useState(String(Number(((config.macro.inflation_urban ?? 0) * 100).toFixed(2))));
   const [busy, setBusy] = useState(false);
-  const crypto = config.crypto;
 
   const save = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -80,40 +79,17 @@ export function SettingsScreen() {
           </div>
         </Card>
 
-        <Card tone={crypto?.enabled ? "lilac" : undefined} className="span-6">
-          <CardHead
-            title="خانة الكريبتو"
-            hint="متوقفة افتراضيًا. تفعيلها بيدخل بيتكوين Spot في خطة الشراء"
-            actions={
-              <>
-                <Badge tone={crypto?.enabled ? "ink" : "outline"}>{crypto?.enabled ? "مفعّلة" : "متوقفة"}</Badge>
-                <Switch checked={Boolean(crypto?.enabled)} onChange={(checked) => void save({ crypto_enabled: checked })} label="تفعيل خانة الكريبتو" />
-              </>
-            }
-          />
-          <div className="kv">
-            <div>
-              <b>
-                <N>{`${crypto?.target_pct ?? 0}%`}</N>
-              </b>
-              <span>النسبة المستهدفة</span>
-            </div>
-            <div>
-              <b>
-                <N>{(crypto?.from_value ?? 0).toLocaleString("en-US")}</N>
-              </b>
-              <span>تبدأ من قيمة محفظة (جنيه)</span>
-            </div>
-            <div>
-              <b>
-                <N>{(config.buckets.crypto?.min_order ?? 0).toLocaleString("en-US")}</N>
-              </b>
-              <span>أقل أمر شراء (جنيه)</span>
-            </div>
-          </div>
+        <Card className="span-6">
+          <CardHead title="الكريبتو" hint="شريحة مستقلة عن المحفظة، ومقفولة" actions={<Badge tone="outline">خارج المحفظة</Badge>} />
+          <p className="t-small t-label">
+            الكريبتو خرج من الإضافة الشهرية للمحفظة، وبقى له مخصص منفصل بسياسة مكتوبة في الخطة. مفيش شراء حقيقي دلوقتي: القواعد بتتجرب الأول على دفاتر تجريبية بإيداع افتراضي.
+          </p>
           <Notice icon={<Bitcoin />}>
-            Spot فقط، من غير رافعة ولا عقود ولا Earn. قاعدة الاتجاه: إقفال تحت متوسط 200 يوم 5 أيام متتالية معناه خروج، ومفيش شراء جديد طول ما السعر تحت المتوسط أو البيانات ناقصة. تداول الكريبتو في مصر من غير ترخيص له مخاطر قانونية، والحكم الشرعي فيه خلاف.
+            Spot فقط لو اتفتحت، من غير رافعة ولا عقود ولا Earn، وكل عملية بموافقتك. تداول الكريبتو في مصر من غير ترخيص له مخاطر قانونية، والحكم الشرعي فيه خلاف.
           </Notice>
+          <Button variant="soft" href="/lab" arrow>
+            افتح الدفاتر التجريبية
+          </Button>
         </Card>
 
         <Card className="span-6">

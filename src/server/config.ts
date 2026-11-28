@@ -22,7 +22,8 @@ export function buildConfig(overrides: Overrides | null): Config {
   const config = structuredClone(base) as unknown as Config;
   if (!overrides) return config;
   if (typeof overrides.monthly_contribution === "number") config.monthly_contribution = overrides.monthly_contribution;
-  if (typeof overrides.crypto_enabled === "boolean" && config.crypto) config.crypto.enabled = overrides.crypto_enabled;
+  // `crypto_enabled` saved by an older version is ignored: crypto left the core portfolio on 28 Nov 2026
+  // and is studied as its own sleeve (config/crypto-lab.json).
   if (overrides.macro) config.macro = { ...config.macro, ...overrides.macro };
   return config;
 }

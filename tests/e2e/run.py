@@ -129,15 +129,15 @@ def main():
         expect(page.get_by_label("مبلغ الإضافة بالجنيه")).to_have_value("2000")
         expect(page.locator(".span-7 .list__row")).to_have_count(2)
 
-        # --- settings: change the monthly amount, turn crypto on and off again
+        # --- settings: change the monthly amount; crypto has no switch here any more
         page.get_by_role("link", name="الإعدادات").first.click()
         page.get_by_label("المبلغ بالجنيه").fill("2500")
         page.get_by_role("button", name="حفظ", exact=True).click()
         expect(page.get_by_role("status")).to_contain_text("تم حفظ الإعدادات")
-        page.get_by_role("switch", name="تفعيل خانة الكريبتو").click()
-        expect(page.get_by_text("مفعّلة")).to_be_visible()
-        page.get_by_role("switch", name="تفعيل خانة الكريبتو").click()
-        expect(page.get_by_text("متوقفة", exact=True)).to_be_visible()
+        # crypto is no longer a switch on the core portfolio: the card only points at the paper books
+        expect(page.get_by_role("switch", name="تفعيل خانة الكريبتو")).to_have_count(0)
+        expect(page.get_by_text("خارج المحفظة", exact=True)).to_be_visible()
+        expect(page.get_by_role("link", name="افتح الدفاتر التجريبية")).to_have_attribute("href", "/lab")
         page.get_by_label("المبلغ بالجنيه").fill("2000")
         page.get_by_role("button", name="حفظ", exact=True).click()
         expect(page.get_by_role("status")).to_contain_text("تم حفظ الإعدادات")
