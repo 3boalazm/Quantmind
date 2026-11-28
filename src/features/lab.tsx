@@ -82,8 +82,11 @@ export function LabScreen() {
   const sync = async () => {
     if (busy) return;
     setBusy(true);
-    await app.send("POST", "/api/lab", { op: "sync" }, load);
-    setBusy(false);
+    try {
+      await app.send("POST", "/api/lab", { op: "sync" }, load);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -436,7 +439,7 @@ function Lab({ data }: { data: LabView }) {
 function Signal({ ok, yes, no, unknown }: { ok: boolean | null; yes: string; no: string; unknown: string }) {
   return (
     <div className="list__row">
-      <span className={cx("bubble", ok === true && "bubble--lime")}>{ok === false ? <TrendingDown /> : <TrendingUp />}</span>
+      <span className={cx("bubble", ok === true && "bubble--lime")}>{ok === null ? <Activity /> : ok ? <TrendingUp /> : <TrendingDown />}</span>
       <div className="list__main">
         <b>{ok === null ? unknown : ok ? yes : no}</b>
       </div>
