@@ -32,8 +32,12 @@ async function xauUsd(): Promise<number> {
   return finite(data.price, "gold price");
 }
 
-/** Daily BTCUSDT closes, oldest first. The market-data mirror is tried first: the main host refuses some regions. */
-async function btcDaily(limit = 260): Promise<Array<[string, number]>> {
+/**
+ * Daily BTCUSDT closes, oldest first. 500 days: the crypto paper books look back 180 days from
+ * month-ends half a year before they start, and need a 200-day average at each of them.
+ * The market-data mirror is tried first: the main host refuses some regions.
+ */
+async function btcDaily(limit = 500): Promise<Array<[string, number]>> {
   const path = `/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=${limit}`;
   let data: unknown;
   try {

@@ -2653,6 +2653,21 @@ html[lang="ar"] .hero__title {
   }
 }
 
+/* Crypto paper books */
+.lab-rule {
+  align-items: flex-start;
+}
+.lab-rule .list__main span {
+  white-space: normal;
+}
+.lab-signals .list__main b {
+  white-space: normal;
+}
+@media (max-width: 640px) {
+  .table td.lab-gap {
+    display: none;
+  }
+}
 /* follow-up: one row per review item, the record form opens under it */
 .review-list {
   display: flex;

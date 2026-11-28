@@ -98,7 +98,7 @@ export function Dashboard() {
     { href: "/plan", title: "خطة الشراء", hint: "توزيع مبلغ الشهر والمراحل الجاية", tone: "mint", icon: <ListChecks /> },
     { href: "/ledger", title: "العمليات", hint: "سجّل الإيداع والشراء والبيع والعائد", tone: "lilac", icon: <ArrowLeftRight /> },
     { href: "/prices", title: "الأسعار والأرصدة", hint: "حدّث قيمة كل أداة من تطبيقها", tone: "peach", icon: <LineChart /> },
-    { href: "/settings", title: "الإعدادات", hint: "الإضافة الشهرية، الكريبتو، وأرقام السوق", tone: "sand", icon: <Settings /> },
+    { href: "/settings", title: "الإعدادات", hint: "الإضافة الشهرية وأرقام السوق", tone: "sand", icon: <Settings /> },
   ];
 
   return (

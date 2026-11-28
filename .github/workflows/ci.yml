@@ -71,3 +71,4 @@ jobs:
           BASE_URL=http://localhost:3210 python tests/e2e/run.py
           BASE_URL=http://localhost:3210 python tests/e2e/budget.py
           BASE_URL=http://localhost:3210 python tests/e2e/follow-up.py
+          BASE_URL=http://localhost:3210 python tests/e2e/lab.py
