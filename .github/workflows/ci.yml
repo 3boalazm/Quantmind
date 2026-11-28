@@ -70,3 +70,4 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:3210/login >/dev/null && break; sleep 1; done
           BASE_URL=http://localhost:3210 python tests/e2e/run.py
           BASE_URL=http://localhost:3210 python tests/e2e/budget.py
+          BASE_URL=http://localhost:3210 python tests/e2e/follow-up.py

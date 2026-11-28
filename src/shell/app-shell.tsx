@@ -7,12 +7,14 @@ import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, S
 import { MODE_ORDER, MODES, modeOf, type Mode } from "@/lib/navigation";
 import { BOOK_LABEL, type Book } from "@/lib/types";
 import { PortfolioProvider, usePortfolio } from "@/state/portfolio-provider";
+import { ReviewsProvider, useReviews } from "@/state/reviews";
 import { Avatar, Button, Card, cx, Empty, IconButton, Select, Toast } from "@/ui";
 import { Mixed } from "@/ui/text";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <PortfolioProvider>
+      <ReviewsProvider>
       <div className="app">
         <div className="frame">
           <Rail />
@@ -27,6 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <ModeMemory />
       <ConfirmHost />
       <ToastHost />
+      </ReviewsProvider>
     </PortfolioProvider>
   );
 }
@@ -40,6 +43,10 @@ function Rail() {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname, setMobileOpen]);
+
+  const reviews = useReviews().data;
+  /** Reviews that are waiting on the person: shown as a count next to the menu entry. */
+  const waiting = reviews ? reviews.counts.problem + reviews.counts.due : 0;
 
   const mode = MODES[modeOf(pathname)];
   // The most specific entry wins, so "/budget/spend" does not also light up "/budget".
@@ -73,16 +80,22 @@ function Rail() {
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const active = item.href === activeHref;
+                const badge = item.id === "follow-up" && waiting > 0 ? waiting : 0;
                 return (
                   <Link
                     key={item.id}
                     href={item.href}
                     className="rail__item"
                     aria-current={active ? "page" : undefined}
-                    aria-label={item.label}
+                    aria-label={badge ? `${item.label}، ${badge} مستحقة` : item.label}
                   >
                     <Icon />
                     <span className="rail__label">{item.label}</span>
+                    {badge ? (
+                      <span className="rail__badge" aria-hidden>
+                        {badge}
+                      </span>
+                    ) : null}
                     <span className="rail__tip" aria-hidden>
                       {item.label}
                     </span>

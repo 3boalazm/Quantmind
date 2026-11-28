@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { AlertIcon, ALERT_LABEL, ALERT_TONE, BUCKET_TONE, BucketIcon } from "@/features/shared";
 import { AddAmount } from "@/features/add-amount";
+import { ReviewsCard } from "@/features/follow-up";
 import type { LedgerRow, Summary } from "@/lib/engine";
 import { egp, formatDate, pct, signedEgp, signedPct } from "@/lib/format";
 import { BOOK_LABEL } from "@/lib/types";
@@ -440,6 +441,9 @@ export function Dashboard() {
             </div>
           )}
         </Card>
+
+        {/* periodic reviews that wait on the person: separate from the rule alerts above, which are computed from the numbers */}
+        <ReviewsCard />
 
         {/* workspaces */}
         {shortcuts.map((item) => (
