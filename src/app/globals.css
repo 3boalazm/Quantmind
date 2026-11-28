@@ -343,6 +343,31 @@ html[lang="ar"] .num {
   background: var(--ink);
   color: var(--on-ink);
 }
+/* the count of reviews waiting on the person: a pill at the end of the entry, a dot on the icon when collapsed */
+.rail__badge {
+  margin-inline-start: auto;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 6px;
+  border-radius: var(--r-pill);
+  background: var(--lime);
+  color: var(--on-lime);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.rail:not(.rail--open) .rail__badge {
+  position: absolute;
+  top: 3px;
+  inset-inline-end: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 4px;
+  font-size: 11px;
+  line-height: 16px;
+}
 .rail:not(.rail--open) .rail__item {
   width: 44px;
   padding: 0;
@@ -2642,4 +2667,92 @@ html[lang="ar"] .hero__title {
   .table td.lab-gap {
     display: none;
   }
+}
+/* follow-up: one row per review item, the record form opens under it */
+.review-list {
+  display: flex;
+  flex-direction: column;
+}
+.review {
+  padding-block: 14px;
+  border-top: 1px solid var(--line);
+}
+.review:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.review:last-child {
+  padding-bottom: 0;
+}
+.review__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.review__head .list__main b {
+  white-space: normal;
+}
+.review__meta,
+.review__last {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.review__chev {
+  transition: transform 0.15s;
+}
+.review__chev--open {
+  transform: rotate(180deg);
+}
+.review__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: var(--r-md);
+  background: var(--card-soft);
+}
+.review__checks {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.review__results,
+.review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.review__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+.review__link svg {
+  width: 16px;
+  height: 16px;
+}
+.review__history {
+  margin-top: 10px;
+}
+.review .badge {
+  display: inline-flex;
+  vertical-align: middle;
+}
+/* notes and reasons are sentences, not captions: they wrap instead of being cut off */
+.list--wrap .list__main span {
+  white-space: normal;
 }

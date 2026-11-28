@@ -46,3 +46,43 @@ self.addEventListener("fetch", (event) => {
     ),
   );
 });
+
+/* Notifications about reviews that wait. The server sends { title, body, url, tag } through Web Push. */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "QuantMind", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      tag: data.tag || "qm",
+      renotify: true,
+      dir: "rtl",
+      lang: "ar",
+      data: { url: data.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  // Only pages of this app: whatever the message says, it never opens somewhere else.
+  let target = new URL("/", self.location.origin);
+  try {
+    const wanted = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin);
+    if (wanted.origin === self.location.origin) target = wanted;
+  } catch {
+    /* keep the home page */
+  }
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((client) => "focus" in client);
+      if (open) return open.focus().then(() => ("navigate" in open ? open.navigate(target.href) : undefined));
+      return self.clients.openWindow(target.href);
+    }),
+  );
+});

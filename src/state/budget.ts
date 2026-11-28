@@ -2,23 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BudgetView } from "@/lib/budget";
+import { fingerprint, randomHex } from "./op-id";
 import { usePortfolio } from "./portfolio-provider";
-
-function randomHex(): string {
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** Small stable hash of a submission's content (FNV-1a); only a way to tell submissions apart. */
-function fingerprint(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
-}
 
 export interface BudgetHandle {
   data: BudgetView | null;

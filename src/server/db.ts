@@ -128,6 +128,23 @@ CREATE TABLE IF NOT EXISTS budget_ops (
   op_id       TEXT PRIMARY KEY,
   at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint    TEXT PRIMARY KEY,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS review_log (
+  id          BIGSERIAL PRIMARY KEY,
+  item        TEXT NOT NULL,
+  day         DATE NOT NULL,
+  result      TEXT NOT NULL CHECK (result IN ('ok','watch','problem')),
+  note        TEXT NOT NULL DEFAULT '',
+  next_due    DATE,
+  op_id       TEXT UNIQUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS review_log_item ON review_log (item, day DESC, id DESC);
 `;
 
 /** Creates the tables on first use. An advisory lock keeps parallel cold starts from racing. */

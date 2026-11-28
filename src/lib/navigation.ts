@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Banknote, CalendarCheck, FlaskConical, LayoutDashboard, LineChart, ListChecks, Receipt, Settings, Settings2, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Banknote, CalendarCheck, ClipboardCheck, FlaskConical, LayoutDashboard, LineChart, ListChecks, Receipt, Settings, Settings2, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   id: string;
@@ -38,6 +38,7 @@ export const MODES: Record<Mode, ModeInfo> = {
         items: [
           { id: "dashboard", href: "/", label: "لوحة المحفظة", icon: LayoutDashboard },
           { id: "plan", href: "/plan", label: "خطة الشراء", icon: ListChecks },
+          { id: "follow-up", href: "/follow-up", label: "المتابعة", icon: ClipboardCheck },
           { id: "ledger", href: "/ledger", label: "العمليات", icon: ArrowLeftRight },
           { id: "prices", href: "/prices", label: "الأسعار والأرصدة", icon: LineChart },
         ],

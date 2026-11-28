@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Bitcoin, CalendarClock, Landmark, LogOut, Settings, Smartphone } from "lucide-react";
 import { formatDate, pct } from "@/lib/format";
+import { PushCard } from "@/features/push-card";
 import { usePortfolio } from "@/state/portfolio-provider";
 import { Badge, Bubble, Button, Card, CardHead, Field, Input, Notice, PageHead } from "@/ui";
 import { D, N } from "@/ui/text";
@@ -91,6 +92,8 @@ export function SettingsScreen() {
             افتح الدفاتر التجريبية
           </Button>
         </Card>
+
+        <PushCard />
 
         <Card className="span-6">
           <CardHead title="التطبيق" hint="تثبيت على الموبايل وتسجيل الخروج" actions={<Bubble><Smartphone /></Bubble>} />
