@@ -86,8 +86,11 @@ def main():
         expect(r.get_by_text("اللي تراجعه")).to_be_visible()
         save = r.get_by_role("button", name="سجّل المراجعة")
         expect(save).to_be_disabled()  # no result chosen yet
+        expect(r.get_by_text("اختار نتيجة المراجعة الأول")).to_be_visible()  # and it says why
         r.get_by_role("button", name="مشكلة", exact=True).click()
+        expect(r.get_by_role("button", name="مشكلة", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(save).to_be_disabled()  # a problem without a note
+        expect(r.get_by_text("اكتب الملاحظة عشان تقدر تسجّل")).to_be_visible()
         expect(r.get_by_text("اكتب ملاحظة قصيرة")).to_be_visible()
         r.get_by_label(re.compile("^ملاحظة")).fill("الرد جه: مش واضح، محتاج أسأل تاني")
         expect(r.get_by_text("المراجعة الجاية")).to_be_visible()

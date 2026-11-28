@@ -352,14 +352,11 @@ html[lang="ar"] .num {
   border-radius: var(--r-pill);
   background: var(--lime);
   color: var(--on-lime);
-  font-size: 11.5px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 20px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-}
-.rail__item[aria-current="page"] .rail__badge {
-  background: var(--lime);
 }
 .rail:not(.rail--open) .rail__badge {
   position: absolute;
@@ -368,7 +365,7 @@ html[lang="ar"] .num {
   min-width: 16px;
   height: 16px;
   padding-inline: 4px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
 }
 .rail:not(.rail--open) .rail__item {

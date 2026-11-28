@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, CheckCheck, ChevronDown, ClipboardCheck, Eye, History, TriangleAlert, Undo2 } from "lucide-react";
+import { CalendarClock, Check, CheckCheck, ChevronDown, ClipboardCheck, Eye, History, TriangleAlert, Undo2 } from "lucide-react";
 import { MAX_NEXT_DAYS, nextDue, pending, type ReviewResult, type ReviewState, type ReviewStatus, type ReviewsView } from "@/lib/followup";
 import { formatDate } from "@/lib/format";
 import { useReviews } from "@/state/reviews";
@@ -70,8 +70,8 @@ export function FollowUpScreen() {
           />
         </Card>
       ) : !data ? (
-        <div className="bento" aria-busy="true" aria-label="جاري التحميل">
-          <div className="card card--soft skeleton span-12" role="status" aria-label="جاري التحميل" style={{ minHeight: 220 }} />
+        <div className="bento">
+          <div className="card card--soft skeleton span-12" role="status" aria-label="جاري تحميل المراجعات" style={{ minHeight: 220 }} />
         </div>
       ) : (
         <Reviews data={data} />
@@ -276,6 +276,7 @@ function RecordForm({ state, today, onDone }: { state: ReviewState; today: strin
   const daysOk = parsed === null || (Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_NEXT_DAYS);
   const needsNote = result !== null && result !== "ok" && note.trim() === "";
   const next = result && daysOk ? nextDue(item, result, today, parsed) : undefined;
+  const blocked = !result ? "اختار نتيجة المراجعة الأول." : needsNote ? "اكتب الملاحظة عشان تقدر تسجّل." : !daysOk ? "صحّح عدد الأيام عشان تقدر تسجّل." : "";
 
   const save = async () => {
     if (!result || !daysOk || needsNote || busy) return;
@@ -303,7 +304,7 @@ function RecordForm({ state, today, onDone }: { state: ReviewState; today: strin
     <div className="stack">
       <div role="group" aria-label="نتيجة المراجعة" className="review__results">
         {RESULTS.map((value) => (
-          <Button key={value} variant={result === value ? "ink" : "soft"} size="sm" aria-pressed={result === value} onClick={() => setResult(value)}>
+          <Button key={value} variant={result === value ? "ink" : "soft"} size="sm" aria-pressed={result === value} icon={result === value ? <Check /> : undefined} onClick={() => setResult(value)}>
             {RESULT[value].label}
           </Button>
         ))}
@@ -330,8 +331,14 @@ function RecordForm({ state, today, onDone }: { state: ReviewState; today: strin
         </Notice>
       ) : null}
 
+      {blocked ? (
+        <p id={`why-${item.id}`} className="t-small t-muted">
+          {blocked}
+        </p>
+      ) : null}
+
       <div className="review__actions">
-        <Button variant="ink" disabled={!result || !daysOk || needsNote || busy} onClick={() => void save()}>
+        <Button variant="ink" disabled={Boolean(blocked) || busy} aria-describedby={blocked ? `why-${item.id}` : undefined} onClick={() => void save()}>
           {busy ? "جاري الحفظ…" : "سجّل المراجعة"}
         </Button>
         {state.last ? (
@@ -363,8 +370,27 @@ function defaultDays(item: ReviewState["item"], result: ReviewResult | null): st
 
 /** Dashboard card: what waits on a review today, with a way in. */
 export function ReviewsCard() {
-  const { data } = useReviews();
-  if (!data) return null;
+  const { data, error, reload } = useReviews();
+  if (!data) {
+    // never silent: a failed load would hide a review that is due
+    return error ? (
+      <Card className="span-12">
+        <CardHead title="المراجعات" hint="بنود المتابعة الدورية لكل استثمار" />
+        <Empty
+          icon={<TriangleAlert />}
+          title="تعذر تحميل المراجعات"
+          description={error}
+          action={
+            <Button variant="soft" size="sm" onClick={() => void reload()}>
+              حاول تاني
+            </Button>
+          }
+        />
+      </Card>
+    ) : (
+      <div className="card card--soft skeleton span-12" role="status" aria-label="جاري تحميل المراجعات" style={{ minHeight: 160 }} />
+    );
+  }
   const waiting = pending(data.states);
   const shown = waiting.slice(0, 5);
   const nextUp = data.states.find((s) => s.status === "soon" || s.status === "watch" || s.status === "ok");
