@@ -128,6 +128,12 @@ CREATE TABLE IF NOT EXISTS budget_ops (
   op_id       TEXT PRIMARY KEY,
   at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint    TEXT PRIMARY KEY,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS review_log (
   id          BIGSERIAL PRIMARY KEY,
   item        TEXT NOT NULL,
