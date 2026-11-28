@@ -16,8 +16,8 @@ PASSWORD = os.environ["APP_PASSWORD"]
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else None
 
 MIXED = "ردّ الاستفتاء: الأسهم المختلطة"  # open from day one, one-off
-BANK = "سؤال الدعم: بنك الوكالة"  # open from day one, one-off
-CUSTODY = "سؤال الدعم: تخصيص السبائك"  # open from day one, one-off
+BANK = "بنك الوكالة في كلاودز شريعة"  # open from day one, one-off
+CUSTODY = "تخصيص السبائك والجرد (جاوبته النشرة)"  # open from day one, one-off
 PLAN_RATE = "قرار الفايدة عند المركزي"  # recurring, open from day one
 SAFE = "منصة SAFE قبل أول حصة"  # waits for the portfolio to reach a size
 
